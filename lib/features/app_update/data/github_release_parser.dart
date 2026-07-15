@@ -1,6 +1,7 @@
 import 'package:dartx/dartx.dart';
 import 'package:hiddify/core/model/environment.dart';
 import 'package:hiddify/features/app_update/model/remote_version_entity.dart';
+import 'package:hiddify/utils/platform_utils.dart';
 
 abstract class GithubReleaseParser {
   static RemoteVersionEntity parse(Map<String, dynamic> json) {
@@ -23,23 +24,41 @@ abstract class GithubReleaseParser {
     }
     final preRelease = json["prerelease"] as bool;
     final publishedAt = DateTime.parse(json["published_at"] as String);
-    // Extract the arm64 APK download URL for in-app updates on Android.
     String? assetDownloadUrl;
     final assets = json["assets"] as List<dynamic>?;
     if (assets != null) {
-      for (final asset in assets) {
-        final name = (asset as Map<String, dynamic>)["name"] as String? ?? '';
-        if (name.endsWith('.apk') && name.contains('arm64')) {
-          assetDownloadUrl = asset["browser_download_url"] as String?;
-          break;
-        }
-      }
-      // Fallback: any APK
-      if (assetDownloadUrl == null) {
-        for (final a in assets.cast<Map<String, dynamic>>()) {
-          if ((a["name"] as String?)?.endsWith('.apk') == true) {
-            assetDownloadUrl = a["browser_download_url"] as String?;
+      if (PlatformUtils.isWindows) {
+        // Windows: prefer .zip (portable), fallback to .exe (installer)
+        for (final asset in assets) {
+          final name = (asset as Map<String, dynamic>)["name"] as String? ?? '';
+          if (name.endsWith('.zip')) {
+            assetDownloadUrl = asset["browser_download_url"] as String?;
             break;
+          }
+        }
+        if (assetDownloadUrl == null) {
+          for (final a in assets.cast<Map<String, dynamic>>()) {
+            if ((a["name"] as String?)?.endsWith('.exe') == true) {
+              assetDownloadUrl = a["browser_download_url"] as String?;
+              break;
+            }
+          }
+        }
+      } else {
+        // Android: arm64 APK preferred, fallback to any APK
+        for (final asset in assets) {
+          final name = (asset as Map<String, dynamic>)["name"] as String? ?? '';
+          if (name.endsWith('.apk') && name.contains('arm64')) {
+            assetDownloadUrl = asset["browser_download_url"] as String?;
+            break;
+          }
+        }
+        if (assetDownloadUrl == null) {
+          for (final a in assets.cast<Map<String, dynamic>>()) {
+            if ((a["name"] as String?)?.endsWith('.apk') == true) {
+              assetDownloadUrl = a["browser_download_url"] as String?;
+              break;
+            }
           }
         }
       }

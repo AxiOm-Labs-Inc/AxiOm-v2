@@ -1,8 +1,8 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hiddify/core/http_client/http_client_provider.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/features/app_update/data/update_downloader.dart';
 import 'package:hiddify/features/app_update/model/remote_version_entity.dart';
@@ -21,6 +21,8 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = ref.watch(translationsProvider).requireValue;
     final theme = Theme.of(context);
+    final isWindows = PlatformUtils.isWindows;
+    final downloader = UpdateDownloader(httpClient: ref.read(httpClientProvider));
 
     final downloadUrl = newVersion.assetDownloadUrl;
     final downloadProgress = useState<double?>(null);
@@ -35,7 +37,7 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
     useEffect(() {
       if (didCheck.value || downloadUrl == null) return null;
       didCheck.value = true;
-      UpdateDownloader(dio: Dio()).getCachedApk(downloadUrl).then((path) {
+      downloader.getCachedUpdate(downloadUrl).then((path) {
         if (path != null) {
           cachedPath.value = path;
           readyToInstall.value = true;
@@ -54,7 +56,7 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
       // Already have the file — go straight to install
       if (readyToInstall.value && cachedPath.value != null) {
         if (context.mounted) context.pop();
-        await UpdateDownloader(dio: Dio()).installApk(cachedPath.value!);
+        await downloader.installUpdate(cachedPath.value!);
         return;
       }
 
@@ -63,12 +65,7 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
       downloadProgress.value = 0;
 
       try {
-        final dio = Dio(BaseOptions(
-          connectTimeout: const Duration(seconds: 30),
-          receiveTimeout: const Duration(minutes: 10),
-        ));
-        final downloader = UpdateDownloader(dio: dio);
-        final apkPath = await downloader.downloadApk(
+        final filePath = await downloader.downloadUpdate(
           url: downloadUrl,
           onProgress: (received, total) {
             if (!context.mounted) return;
@@ -79,7 +76,7 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
         );
 
         isDownloading.value = false;
-        cachedPath.value = apkPath;
+        cachedPath.value = filePath;
         readyToInstall.value = true;
       } catch (e) {
         isDownloading.value = false;
@@ -93,7 +90,7 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
     Future<void> install() async {
       if (cachedPath.value == null) return;
       if (context.mounted) context.pop();
-      await UpdateDownloader(dio: Dio()).installApk(cachedPath.value!);
+      await downloader.installUpdate(cachedPath.value!);
     }
 
     final canAct = !isDownloading.value;
@@ -139,7 +136,7 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
             Row(children: [
               Icon(Icons.check_circle, size: 18, color: const Color(0xFF5DCAA5)),
               const SizedBox(width: 8),
-              Text('APK готов к установке', style: TextStyle(color: const Color(0xFF5DCAA5), fontSize: 13)),
+              Text(isWindows ? 'Загрузка завершена' : 'APK готов к установке', style: TextStyle(color: const Color(0xFF5DCAA5), fontSize: 13)),
             ]),
           ],
         ],
@@ -157,8 +154,8 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
         if (readyToInstall.value && canAct)
           FilledButton.icon(
             onPressed: install,
-            icon: const Icon(Icons.install_mobile, size: 18),
-            label: const Text('Установить'),
+            icon: Icon(isWindows ? Icons.folder_open : Icons.install_mobile, size: 18),
+            label: Text(isWindows ? 'Открыть папку' : 'Установить'),
           )
         else if (canAct && !readyToInstall.value)
           FilledButton(

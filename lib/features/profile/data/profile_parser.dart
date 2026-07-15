@@ -205,6 +205,11 @@ class ProfileParser {
           continue;
         }
 
+        if (!await _isSafeRemoteUrl(line)) {
+          results[currentIndex] = '';
+          continue;
+        }
+
         try {
           final tmpPath = '$tempFilePath.$currentIndex';
 
@@ -234,6 +239,43 @@ class ProfileParser {
       final newContent = results.join("\n");
       await File(tempFilePath).writeAsString(newContent);
     }
+  }
+
+  /// Blocks SSRF: subscription content can embed arbitrary URLs that
+  /// [expandRemoteLinesInParallel] fetches automatically, so a malicious
+  /// subscription server could point them at loopback/private/link-local
+  /// addresses to probe the user's local network. Resolve the host and
+  /// reject anything not routable on the public internet.
+  static Future<bool> _isSafeRemoteUrl(String url) async {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || uri.host.isEmpty) return false;
+    try {
+      final addresses = await InternetAddress.lookup(uri.host);
+      if (addresses.isEmpty) return false;
+      for (final addr in addresses) {
+        if (addr.isLoopback ||
+            addr.isLinkLocal ||
+            addr.isMulticast ||
+            _isPrivateIPv4(addr)) {
+          return false;
+        }
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _isPrivateIPv4(InternetAddress addr) {
+    if (addr.type != InternetAddressType.IPv4) return false;
+    final b = addr.rawAddress;
+    if (b[0] == 10) return true;
+    if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
+    if (b[0] == 192 && b[1] == 168) return true;
+    if (b[0] == 169 && b[1] == 254) return true; // link-local, redundant safety
+    if (b[0] == 127) return true; // loopback, redundant safety
+    if (b[0] == 0) return true; // "this network"
+    return false;
   }
 
   static Either<ProfileFailure, Map<String, dynamic>> populateHeaders({

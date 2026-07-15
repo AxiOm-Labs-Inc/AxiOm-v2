@@ -580,10 +580,14 @@ class HiddifyCoreService with InfraLogger {
       await stopListenSingle("bg");
       try {
         await core.fgClient.close(CloseRequest(mode: SetupMode.GRPC_NORMAL_INSECURE));
-      } catch (e) {}
+      } catch (e) {
+        loggy.debug("error closing fg client (insecure): $e");
+      }
       try {
         await core.fgClient.close(CloseRequest(mode: SetupMode.GRPC_NORMAL));
-      } catch (e) {}
+      } catch (e) {
+        loggy.debug("error closing fg client: $e");
+      }
     }
   }
 }
