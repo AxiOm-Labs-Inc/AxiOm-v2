@@ -1,4 +1,10 @@
 
+# Dev docs with secrets (keystore passwords, API keys) — never commit.
+# Lives in the parent AxiOm_APP_v2 folder (outside this repo); rule kept here
+# as a safeguard in case the docs are ever moved inside the repo.
+dev-docs/
+DEVELOPMENT.md
+
 # Miscellaneous
 *.class
 *.log

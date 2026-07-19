@@ -5,9 +5,12 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:hiddify/core/app_info/app_info_provider.dart';
 import 'package:hiddify/core/localization/translations.dart';
+import 'package:hiddify/core/model/app_colors.dart';
 import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/core/widget/axiom_branding.dart';
+import 'package:hiddify/utils/utils.dart';
+import 'package:hiddify/features/account/widget/home_account_banner.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_state.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
@@ -130,7 +133,10 @@ class HomePage extends HookConsumerWidget {
                             children: [
                               if (appUpdate case AppUpdateStateAvailable(:final versionInfo))
                                 _UpdateBanner(
-                                  version: versionInfo.presentVersion,
+                                  title: t.pages.home.update.available(version: versionInfo.presentVersion),
+                                  subtitle: PlatformUtils.isDesktop
+                                      ? t.pages.home.update.clickToUpdate
+                                      : t.pages.home.update.tapToUpdate,
                                   onTap: () {
                                     if (appInfo == null) return;
                                     ref.read(dialogNotifierProvider.notifier).showNewVersion(
@@ -140,6 +146,7 @@ class HomePage extends HookConsumerWidget {
                                     );
                                   },
                                 ),
+                              const HomeAccountBanner(),
                               Expanded(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,
@@ -181,7 +188,7 @@ class _ProfileChip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    const activeColor = Color(0xFF5DCAA5);
+    const activeColor = Color(AppColors.success);
 
     return GestureDetector(
       onTap: () => ref.read(bottomSheetsNotifierProvider.notifier).showProfilesOverview(),
@@ -232,6 +239,7 @@ class _StatRow extends HookConsumerWidget {
     final activeProfile = ref.watch(activeProfileProvider).valueOrNull;
     final activeProxy = ref.watch(activeProxyNotifierProvider).valueOrNull;
     final theme = Theme.of(context);
+    final s = ref.watch(translationsProvider).requireValue.pages.home.stats;
 
     final subInfo = activeProfile is RemoteProfileEntity ? activeProfile.subInfo : null;
 
@@ -242,10 +250,10 @@ class _StatRow extends HookConsumerWidget {
       // values above these thresholds — treat them as unlimited (∞).
       final usedGB = subInfo.consumption / 1073741824.0;
       if (subInfo.total > ProfileParser.infiniteTrafficThreshold) {
-        trafficStr = '${usedGB.toStringAsFixed(1)}/∞ ГБ';
+        trafficStr = '${usedGB.toStringAsFixed(1)}/∞ ${s.gb}';
       } else {
         final totalGB = subInfo.total / 1073741824.0;
-        trafficStr = '${usedGB.toStringAsFixed(1)}/${totalGB.toStringAsFixed(0)} ГБ';
+        trafficStr = '${usedGB.toStringAsFixed(1)}/${totalGB.toStringAsFixed(0)} ${s.gb}';
       }
       final unlimitedTime =
           subInfo.expire.millisecondsSinceEpoch >= ProfileParser.infiniteTimeThreshold * 1000;
@@ -287,9 +295,9 @@ class _StatRow extends HookConsumerWidget {
     final connectionStatus = ref.watch(connectionNotifierProvider);
     final isConnected = connectionStatus is AsyncData && connectionStatus.value is Connected;
     final delay = activeProxy?.urlTestDelay ?? 0;
-    final pingStr = (isConnected && delay > 0 && delay < 65000) ? '${delay}мс' : '—';
+    final pingStr = (isConnected && delay > 0 && delay < 65000) ? '${delay}${s.ms}' : '—';
     final pingColor = (isConnected && delay > 0 && delay < 65000)
-        ? (delay < 300 ? const Color(0xFF5DCAA5) : const Color(0xFFD9CD7B))
+        ? (delay < 300 ? const Color(AppColors.success) : const Color(AppColors.warning))
         : null;
 
     final dividerColor = theme.colorScheme.outline.withValues(alpha: .2);
@@ -304,14 +312,14 @@ class _StatRow extends HookConsumerWidget {
       child: IntrinsicHeight(
         child: Row(
           children: [
-            _StatCell(label: 'ТРАФИК', value: trafficStr),
+            _StatCell(label: s.traffic, value: trafficStr),
             VerticalDivider(width: 1, color: dividerColor),
-            _StatCell(label: 'ДНИ', value: daysStr),
+            _StatCell(label: s.days, value: daysStr),
             VerticalDivider(width: 1, color: dividerColor),
-            _StatCell(label: 'ПИНГ', value: pingStr, valueColor: pingColor),
+            _StatCell(label: s.ping, value: pingStr, valueColor: pingColor),
             VerticalDivider(width: 1, color: dividerColor),
             _StatCell(
-              label: 'УСТРОЙСТВА',
+              label: s.devices,
               value: devicesStr,
               onTap: token != null ? () => ref.invalidate(deviceCountProvider(token)) : null,
             ),
@@ -322,7 +330,7 @@ class _StatRow extends HookConsumerWidget {
   }
 }
 
-class _StatCell extends StatelessWidget {
+class _StatCell extends HookWidget {
   const _StatCell({required this.label, required this.value, this.valueColor, this.onTap});
   final String label;
   final String value;
@@ -335,6 +343,8 @@ class _StatCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Brief spinner after a manual refresh tap so the action isn't "mute".
+    final refreshing = useState(false);
     final valueStyle = theme.textTheme.bodyMedium?.copyWith(
       fontWeight: FontWeight.w500,
       color: valueColor ?? theme.colorScheme.onSurface,
@@ -348,11 +358,20 @@ class _StatCell extends StatelessWidget {
             children: [
               Flexible(child: Text(value, overflow: TextOverflow.ellipsis, style: valueStyle)),
               const SizedBox(width: 4),
-              Icon(
-                Icons.refresh_rounded,
-                size: 12,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: .6),
-              ),
+              refreshing.value
+                  ? SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.6,
+                        color: theme.colorScheme.onSurfaceVariant.withValues(alpha: .6),
+                      ),
+                    )
+                  : Icon(
+                      Icons.refresh_rounded,
+                      size: 12,
+                      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: .6),
+                    ),
             ],
           );
 
@@ -382,7 +401,17 @@ class _StatCell extends StatelessWidget {
     return Expanded(
       child: onTap == null
           ? content
-          : InkWell(onTap: onTap, borderRadius: BorderRadius.circular(8), child: content),
+          : InkWell(
+              onTap: () {
+                onTap!();
+                refreshing.value = true;
+                Future.delayed(const Duration(milliseconds: 800), () {
+                  if (context.mounted) refreshing.value = false;
+                });
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: content,
+            ),
     );
   }
 }
@@ -390,11 +419,12 @@ class _StatCell extends StatelessWidget {
 /// Banner shown on home page when a new version is available.
 /// Only disappears once the user updates the app — no dismiss/ignore.
 class _UpdateBanner extends StatelessWidget {
-  const _UpdateBanner({required this.version, required this.onTap});
-  final String version;
+  const _UpdateBanner({required this.title, required this.subtitle, required this.onTap});
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
 
-  static const _leftBorderColor = Color(0xFF5DCAA5);
+  static const _leftBorderColor = Color(AppColors.success);
 
   @override
   Widget build(BuildContext context) {
@@ -424,12 +454,12 @@ class _UpdateBanner extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Доступна версия $version',
+                        title,
                         style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Коснитесь чтобы обновить',
+                        subtitle,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),

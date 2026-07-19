@@ -97,7 +97,20 @@
   "pages": {
     "home": {
       "title": "Главная",
-      "quickSettings": "Быстрые настройки"
+      "quickSettings": "Быстрые настройки",
+      "stats": {
+        "traffic": "ТРАФИК",
+        "days": "ДНИ",
+        "ping": "ПИНГ",
+        "devices": "УСТРОЙСТВА",
+        "gb": "ГБ",
+        "ms": "мс"
+      },
+      "update": {
+        "available": "Доступна версия ${version}",
+        "tapToUpdate": "Коснитесь чтобы обновить",
+        "clickToUpdate": "Нажмите чтобы обновить"
+      }
     },
     "proxies": {
       "title": "Прокси",
@@ -155,6 +168,37 @@
         "delete": {
           "success": "Профиль успешно удален"
         }
+      },
+      "account": {
+        "title": "Личный кабинет",
+        "connectDesc": "Подключите Telegram-аккаунт для доступа к вашим подпискам",
+        "waiting": "Ожидание подтверждения…",
+        "openTelegram": "Открыть Telegram",
+        "cancel": "Отмена",
+        "retry": "Повторить",
+        "refresh": "Обновить",
+        "logout": "Выйти",
+        "logoutConfirm": "Выйти из аккаунта?",
+        "logoutConfirmDesc": "Подписки, добавленные в «Мои профили», останутся.",
+        "copyLink": "Копировать ссылку",
+        "linkCopied": "Ссылка скопирована",
+        "addToProfiles": "Добавить в профили",
+        "addedToProfiles": "Подписка добавлена в профили",
+        "activeStatus": "Активна",
+        "noSubscriptions": "У вас пока нет активных подписок",
+        "trafficLabel": "ТРАФИК",
+        "expiresLabel": "Действует до",
+        "defaultTariff": "Подписка",
+        "accountFallback": "Аккаунт",
+        "connectTitle": "Подключить личный кабинет",
+        "connectHint": "Отсканируйте QR-код или откройте бота\nи подтвердите вход",
+        "connectError": "Ошибка подключения",
+        "close": "Закрыть",
+        "timeout": "Время ожидания истекло. Попробуйте снова.",
+        "networkError": "Нет соединения с сервером. Проверьте интернет и попробуйте снова.",
+        "activeUntil": "до ${date}",
+        "noActiveSub": "нет подписок",
+        "refreshed": "Обновлено"
       }
     },
     "profileDetails": {

@@ -10,7 +10,7 @@ import 'package:hiddify/utils/custom_loggers.dart';
 class DioHttpClient with InfraLogger {
   final Map<String, Dio> _dio = {};
   DioHttpClient({required Duration timeout, required this.userAgent, required bool debug}) {
-    for (var mode in ["proxy", "direct", "both"]) {
+    for (final mode in ["proxy", "direct", "both"]) {
       _dio[mode] = Dio(
         BaseOptions(
           connectTimeout: timeout,
@@ -89,6 +89,7 @@ class DioHttpClient with InfraLogger {
     String? userAgent,
     ({String username, String password})? credentials,
     bool proxyOnly = false,
+    Map<String, String>? extraHeaders,
   }) async {
     final mode = proxyOnly
         ? "proxy"
@@ -100,7 +101,31 @@ class DioHttpClient with InfraLogger {
     return dio.get<T>(
       url,
       cancelToken: cancelToken,
-      options: _options(url, userAgent: userAgent, credentials: credentials),
+      options: _options(url, userAgent: userAgent, credentials: credentials, extraHeaders: extraHeaders),
+    );
+  }
+
+  Future<Response> post(
+    String url, {
+    CancelToken? cancelToken,
+    String? userAgent,
+    ({String username, String password})? credentials,
+    bool proxyOnly = false,
+    Map<String, String>? extraHeaders,
+    dynamic data,
+  }) async {
+    final mode = proxyOnly
+        ? "proxy"
+        : await isPortOpen("127.0.0.1", port)
+        ? "both"
+        : "direct";
+    final dio = _dio[mode]!;
+
+    return dio.post(
+      url,
+      cancelToken: cancelToken,
+      data: data,
+      options: _options(url, userAgent: userAgent, credentials: credentials, extraHeaders: extraHeaders),
     );
   }
 
@@ -128,7 +153,7 @@ class DioHttpClient with InfraLogger {
     );
   }
 
-  Options _options(String url, {String? userAgent, ({String username, String password})? credentials}) {
+  Options _options(String url, {String? userAgent, ({String username, String password})? credentials, Map<String, String>? extraHeaders}) {
     final uri = Uri.parse(url);
 
     String? userInfo;
@@ -147,8 +172,7 @@ class DioHttpClient with InfraLogger {
       headers: {
         if (userAgent != null) "User-Agent": userAgent,
         if (basicAuth != null) "authorization": basicAuth,
-        // "Accept": "application/json",
-        // "Content-Type": "application/json",
+        if (extraHeaders != null) ...extraHeaders,
       },
     );
   }

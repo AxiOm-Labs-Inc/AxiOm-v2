@@ -93,7 +93,20 @@
   "pages": {
     "home": {
       "title": "Home",
-      "quickSettings": "Quick settings"
+      "quickSettings": "Quick settings",
+      "stats": {
+        "traffic": "TRAFFIC",
+        "days": "DAYS",
+        "ping": "PING",
+        "devices": "DEVICES",
+        "gb": "GB",
+        "ms": "ms"
+      },
+      "update": {
+        "available": "Version ${version} available",
+        "tapToUpdate": "Tap to update",
+        "clickToUpdate": "Click to update"
+      }
     },
     "proxies": {
       "title": "Proxies",
@@ -152,6 +165,37 @@
         "delete": {
           "success": "Profile deleted successfully"
         }
+      },
+      "account": {
+        "title": "Personal Account",
+        "connectDesc": "Connect your Telegram account to access your subscriptions",
+        "waiting": "Waiting for confirmation…",
+        "openTelegram": "Open Telegram",
+        "cancel": "Cancel",
+        "retry": "Retry",
+        "refresh": "Refresh",
+        "logout": "Logout",
+        "logoutConfirm": "Logout from account?",
+        "logoutConfirmDesc": "Subscriptions added to \"My Profiles\" will remain.",
+        "copyLink": "Copy link",
+        "linkCopied": "Link copied",
+        "addToProfiles": "Add to profiles",
+        "addedToProfiles": "Subscription added to profiles",
+        "activeStatus": "Active",
+        "noSubscriptions": "You have no active subscriptions yet",
+        "trafficLabel": "TRAFFIC",
+        "expiresLabel": "Active until",
+        "defaultTariff": "Subscription",
+        "accountFallback": "Account",
+        "connectTitle": "Connect Personal Account",
+        "connectHint": "Scan the QR code or open the bot\nand confirm login",
+        "connectError": "Connection error",
+        "close": "Close",
+        "timeout": "Time expired. Please try again.",
+        "networkError": "No connection to the server. Check your internet and try again.",
+        "activeUntil": "until ${date}",
+        "noActiveSub": "no subscriptions",
+        "refreshed": "Updated"
       }
     },
     "profileDetails": {

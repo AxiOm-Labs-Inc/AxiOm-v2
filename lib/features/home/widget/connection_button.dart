@@ -168,7 +168,6 @@ class ConnectionButton extends HookConsumerWidget {
 
     // Extra widget below the main label based on connection state
     final Widget? extraWidget = switch (connectionStatus) {
-      AsyncData(value: Disconnected()) => const _IdleSubtitle(),
       AsyncData(value: Connected()) when delay <= 0 || delay >= 65000 => const _HandshakeIndicator(),
       AsyncData(value: Connected()) when fullyConnected => _ElapsedTimer(seconds: elapsedSeconds.value),
       AsyncError() => _RetryPill(
@@ -374,24 +373,6 @@ class _ConnectionButton extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-// "НАЖМИТЕ ДЛЯ ПОДКЛЮЧЕНИЯ" shown when idle
-class _IdleSubtitle extends StatelessWidget {
-  const _IdleSubtitle();
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      'НАЖМИТЕ ДЛЯ ПОДКЛЮЧЕНИЯ',
-      style: TextStyle(
-        fontSize: 10,
-        letterSpacing: 2.0,
-        fontWeight: FontWeight.w500,
-        color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: .5),
-      ),
     );
   }
 }

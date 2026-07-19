@@ -150,7 +150,6 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
             },
             child: Text(t.common.ignore),
           ),
-        if (canAct) TextButton(onPressed: context.pop, child: Text(t.common.later)),
         if (readyToInstall.value && canAct)
           FilledButton.icon(
             onPressed: install,
