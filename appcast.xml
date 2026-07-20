@@ -17,11 +17,11 @@
                 sparkle:version="4.1.12" sparkle:os="ios" />
         </item>
         <item>
-            <title>Version 4.1.12</title>
-            <pubDate>Wed, 15 Jul 2026 22:00:00 +0000</pubDate>
+            <title>Version 4.2.0</title>
+            <pubDate>Mon, 20 Jul 2026 15:00:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.1.12/AxiOm-Windows-v4.1.12.zip"
-                sparkle:version="4.1.12" sparkle:os="windows" />
+                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.2.0/AxiOm-Windows-v4.2.0.zip"
+                sparkle:version="4.2.0" sparkle:os="windows" />
         </item>
         <item>
             <title>Version 4.1.12</title>
