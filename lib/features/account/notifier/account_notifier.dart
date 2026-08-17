@@ -4,11 +4,15 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:fpdart/fpdart.dart';
 import 'package:hiddify/core/http_client/http_client_provider.dart';
 import 'package:hiddify/core/localization/translations.dart';
+import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/features/account/data/account_api.dart';
 import 'package:hiddify/features/account/model/account_models.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
+import 'package:hiddify/features/account/notifier/account_features_provider.dart';
+import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -45,6 +49,21 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
     await _secureStorage.delete(key: _sessionKey);
   }
 
+  // ── Feature flags (/api/app/me "features") ─────────────────────────────
+
+  /// Stores the freshly fetched flags in [accountFeaturesProvider] and
+  /// persists the telemost entitlement for offline/startup fallback.
+  void _updateFeatures(Map<String, dynamic> me) {
+    final features = parseFeatures(me['features'] as Map<String, dynamic>?);
+    ref.read(accountFeaturesProvider.notifier).state = features;
+    unawaited(ref.read(Preferences.telemostEntitled.notifier).update(features.telemost));
+  }
+
+  void _resetFeatures() {
+    ref.read(accountFeaturesProvider.notifier).state = const AccountFeatures();
+    unawaited(ref.read(Preferences.telemostEntitled.notifier).update(false));
+  }
+
   Future<void> _restoreSession() async {
     try {
       final raw = await _secureStorage.read(key: _sessionKey);
@@ -57,10 +76,12 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
       // Load fresh data
       final api = ref.read(accountApiProvider);
       final me = await api.getMe(session.sessionToken);
+      _updateFeatures(me);
       final subs = (me['subscriptions'] as List<dynamic>?)
               ?.map((s) => parseSubscription(s as Map<String, dynamic>))
               .toList() ??
           [];
+      unawaited(_syncActiveSubscriptions(subs));
       // Don't clobber a state set by a login flow that started meanwhile
       if (state is! AccountStateRestoring) return;
       state = AccountState.connected(session: session, subscriptions: subs);
@@ -68,6 +89,7 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
       // Token is dead (revoked/expired on the server) — drop it for good
       loggy.info('stored session is no longer valid, clearing');
       await _clearSession();
+      _resetFeatures();
       if (state is AccountStateRestoring) state = const AccountState.disconnected();
     } catch (e) {
       // Transient failure (network down, VPN not up yet, server hiccup):
@@ -75,6 +97,35 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
       // But we MUST leave the restoring state so the UI doesn't flash.
       if (state is AccountStateRestoring) state = const AccountState.disconnected();
       loggy.warning('failed to restore session (keeping it): $e');
+    }
+  }
+
+  // ── Auto-import of active subscriptions ─────────────────────────────────
+
+  /// Imports every active subscription into the profile list, skipping ones
+  /// that are already present (matched by URL). Existing profiles are left
+  /// alone — they refresh themselves via the periodic updater and the
+  /// connect-time refresh — so a sync never steals the active profile.
+  /// Errors are logged and never break login/refresh.
+  Future<void> _syncActiveSubscriptions(List<AccountSubscription> subs) async {
+    final repo = ref.read(profileRepositoryProvider).valueOrNull;
+    if (repo == null) return;
+    for (final sub in subs) {
+      if (sub.status != 'active' || sub.subUrl.isEmpty) continue;
+      try {
+        final exists = await repo.existsByUrl(sub.subUrl).getOrElse((_) => true).run();
+        if (exists) continue;
+        loggy.info('auto-importing active subscription [${sub.tariff.isNotEmpty ? sub.tariff : sub.subUrl}]');
+        await repo.upsertRemote(sub.subUrl).match(
+          (err) {
+            loggy.warning('auto-import failed for [${sub.subUrl}]', err);
+            return unit;
+          },
+          (_) => unit,
+        ).run();
+      } catch (e) {
+        loggy.warning('auto-import error for [${sub.subUrl}]: $e');
+      }
     }
   }
 
@@ -157,10 +208,12 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
               createdAt: DateTime.now(),
             );
             await _saveSession(session);
+            _updateFeatures(me);
             final subs = (me['subscriptions'] as List<dynamic>?)
                     ?.map((s) => parseSubscription(s as Map<String, dynamic>))
                     .toList() ??
                 [];
+            unawaited(_syncActiveSubscriptions(subs));
             state = AccountState.connected(session: session, subscriptions: subs);
             return;
 
@@ -202,10 +255,12 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
     try {
       final api = ref.read(accountApiProvider);
       final me = await api.getMe(current.session.sessionToken);
+      _updateFeatures(me);
       final subs = (me['subscriptions'] as List<dynamic>?)
               ?.map((s) => parseSubscription(s as Map<String, dynamic>))
               .toList() ??
           [];
+      unawaited(_syncActiveSubscriptions(subs));
       state = AccountState.connected(session: current.session, subscriptions: subs);
       return true;
     } catch (e) {
@@ -224,6 +279,7 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
       } catch (_) {}
     }
     await _clearSession();
+    _resetFeatures();
     state = const AccountState.disconnected();
   }
 

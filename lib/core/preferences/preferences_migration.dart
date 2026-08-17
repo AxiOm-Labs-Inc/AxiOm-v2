@@ -11,7 +11,10 @@ class PreferencesMigration with InfraLogger {
   Future<void> migrate() async {
     final currentVersion = sharedPreferences.getInt(versionKey) ?? 0;
 
-    final migrationSteps = [PreferencesVersion1Migration(sharedPreferences)];
+    final List<PreferencesMigrationStep> migrationSteps = [
+      PreferencesVersion1Migration(sharedPreferences),
+      PreferencesVersion2Migration(sharedPreferences),
+    ];
 
     if (currentVersion == migrationSteps.length) {
       loggy.debug("already using the latest version (v$currentVersion)");
@@ -106,4 +109,28 @@ class PreferencesVersion1Migration extends PreferencesMigrationStep with InfraLo
     "ipv6Only" => "ipv6_only",
     _ => "",
   };
+}
+
+/// В регионе ru весь .ru/geoip:ru идёт мимо туннеля, а сохранённый direct-dns указывал на
+/// Cloudflare по plain-UDP — его режет DPI, поэтому direct-домены не резолвились и страницы
+/// (Яндекс в первую очередь) висели. Дефолт уже исправлен, но у установленных приложений в
+/// SharedPreferences лежит старое значение, до которого новый дефолт не дотягивается.
+class PreferencesVersion2Migration extends PreferencesMigrationStep with InfraLogger {
+  PreferencesVersion2Migration(super.sharedPreferences);
+
+  /// Значения, которые мог проставить только прежний дефолт. Осознанно выбранный
+  /// пользователем сервер не трогаем.
+  static const _staleDefaults = {"udp://1.1.1.1", "1.1.1.1"};
+
+  @override
+  Future<void> migrate() async {
+    // Ключа нет, если регион ни разу не меняли — тогда действует дефолт, а он ru.
+    if ((sharedPreferences.getString("region") ?? "ru") != "ru") return;
+
+    final directDns = sharedPreferences.getString("direct-dns-address");
+    if (directDns == null || !_staleDefaults.contains(directDns)) return;
+
+    loggy.debug("region=ru: changing [direct-dns-address] from [$directDns] to [udp://77.88.8.8]");
+    await sharedPreferences.setString("direct-dns-address", "udp://77.88.8.8");
+  }
 }

@@ -89,10 +89,17 @@ abstract class ConfigOptions {
       "tcp://1.1.1.1",
       "https://1.1.1.1/dns-query",
       "https://dns.cloudflare.com/dns-query",
+      "udp://77.88.8.8",
       "4.4.2.2",
       "8.8.8.8",
     ]),
-    defaultValueFunction: (ref) => ref.read(region) == Region.cn ? "223.5.5.5" : "1.1.1.1",
+    // Direct-трафик резолвится этим сервером. В регионе ru весь .ru/geoip:ru идёт мимо
+    // туннеля, а plain-UDP к 1.1.1.1 режет DPI — домены не резолвятся и страницы висят.
+    defaultValueFunction: (ref) => switch (ref.read(region)) {
+      Region.cn => "223.5.5.5",
+      Region.ru => "udp://77.88.8.8",
+      _ => "1.1.1.1",
+    },
     validator: (value) => value.isNotBlank,
   );
 

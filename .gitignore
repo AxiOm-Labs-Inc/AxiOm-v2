@@ -74,3 +74,6 @@ app.*.map.json
 # Windows Self-Signed for msix
 windows/sign.pfx
 windows/sign.cer
+# Native core libs (fetched/built externally) and local build artifacts
+android/app/src/main/jniLibs/
+/*.zip
