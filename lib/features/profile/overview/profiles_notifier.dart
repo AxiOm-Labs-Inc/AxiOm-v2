@@ -41,10 +41,31 @@ class ProfilesNotifier extends _$ProfilesNotifier with AppLogger {
   Future<Unit> selectActiveProfile(String id) async {
     loggy.debug('changing active profile to: [$id]');
     await ref.read(hapticServiceProvider.notifier).lightImpact();
-    return _profilesRepo.setAsActive(id).getOrElse((err) {
+    final result = await _profilesRepo.setAsActive(id).getOrElse((err) {
       loggy.warning('failed to set [$id] as active profile', err);
       throw err;
     }).run();
+    unawaited(_refreshSelectedProfile(id));
+    return result;
+  }
+
+  /// Silently refreshes the just-selected remote profile so the server list
+  /// (rebuilt from the profile file by the cache watcher) is up to date
+  /// immediately, not only after the next connect. Fire-and-forget.
+  Future<void> _refreshSelectedProfile(String id) async {
+    try {
+      final profile = await _profilesRepo.getById(id).getOrElse((_) => null).run();
+      if (profile is! RemoteProfileEntity) return;
+      await _profilesRepo.upsertRemote(profile.url).match(
+        (err) {
+          loggy.warning('background refresh of [$id] failed', err);
+          return unit;
+        },
+        (_) => unit,
+      ).run();
+    } catch (e) {
+      loggy.warning('background refresh of [$id] error: $e');
+    }
   }
 
   Future<void> deleteProfile(ProfileEntity profile) async {

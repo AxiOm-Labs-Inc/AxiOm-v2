@@ -11,6 +11,7 @@ import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/core/widget/axiom_branding.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hiddify/features/account/widget/home_account_banner.dart';
+import 'package:hiddify/features/account/widget/home_expiry_banner.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_state.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
@@ -147,6 +148,7 @@ class HomePage extends HookConsumerWidget {
                                   },
                                 ),
                               const HomeAccountBanner(),
+                              const HomeExpiryBanner(),
                               Expanded(
                                 child: Column(
                                   mainAxisSize: MainAxisSize.min,

@@ -76,19 +76,23 @@ class AccountSubscriptionTile extends HookConsumerWidget {
                   },
                   theme: theme,
                 ),
-                const SizedBox(height: 8),
-                _ActionChip(
-                  icon: Icons.add_rounded,
-                  label: a.addToProfiles,
-                  onTap: () async {
-                    final messenger = ScaffoldMessenger.of(context);
-                    await ref.read(addProfileNotifierProvider.notifier).addClipboard(sub.subUrl);
-                    messenger.showSnackBar(
-                      SnackBar(content: Text(a.addedToProfiles), duration: const Duration(seconds: 2)),
-                    );
-                  },
-                  theme: theme,
-                ),
+                // Active subscriptions are auto-imported on login/refresh; the
+                // button stays as a manual re-add. Inactive ones can't be added.
+                if (sub.status == 'active') ...[
+                  const SizedBox(height: 8),
+                  _ActionChip(
+                    icon: Icons.add_rounded,
+                    label: a.addToProfiles,
+                    onTap: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      await ref.read(addProfileNotifierProvider.notifier).addClipboard(sub.subUrl);
+                      messenger.showSnackBar(
+                        SnackBar(content: Text(a.addedToProfiles), duration: const Duration(seconds: 2)),
+                      );
+                    },
+                    theme: theme,
+                  ),
+                ],
               ],
             ),
           ],

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/model/app_colors.dart';
 import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
+import 'package:hiddify/features/account/model/account_models.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -28,9 +29,15 @@ class HomeAccountBanner extends HookConsumerWidget {
 
     if (state is AccountStateConnected) {
       final session = state.session;
-      final firstSub = state.subscriptions.firstOrNull;
-      final subtitle = (firstSub != null && firstSub.expire != null && firstSub.expire!.isNotEmpty)
-          ? a.activeUntil(date: firstSub.expire!)
+      // Nearest expiry among active subscriptions with a known date — not just
+      // the first (most recently bought) one in the list.
+      AccountSubscription? nearest;
+      for (final s in state.subscriptions) {
+        if (s.status != 'active' || s.expireEpoch == null || s.expire == null) continue;
+        if (nearest == null || s.expireEpoch! < nearest.expireEpoch!) nearest = s;
+      }
+      final subtitle = (nearest != null && nearest.expire!.isNotEmpty)
+          ? a.activeUntil(date: nearest.expire!)
           : a.noActiveSub;
       return _BannerCard(
         onTap: () => context.goNamed('profiles'),

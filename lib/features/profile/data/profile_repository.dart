@@ -20,6 +20,7 @@ import 'package:uuid/uuid.dart';
 abstract interface class ProfileRepository {
   TaskEither<ProfileFailure, Unit> init();
   TaskEither<ProfileFailure, ProfileEntity?> getById(String id);
+  TaskEither<ProfileFailure, bool> existsByUrl(String url);
   TaskEither<ProfileFailure, Unit> setAsActive(String id);
   TaskEither<ProfileFailure, Unit> deleteById(String id, bool isActive);
   Stream<Either<ProfileFailure, ProfileEntity?>> watchActiveProfile();
@@ -72,6 +73,14 @@ class ProfileRepositoryImpl with ExceptionHandler, InfraLogger implements Profil
   TaskEither<ProfileFailure, ProfileEntity?> getById(String id) {
     return TaskEither.tryCatch(
       () => _profileDataSource.getById(id).then((value) => value?.toEntity()),
+      ProfileUnexpectedFailure.new,
+    );
+  }
+
+  @override
+  TaskEither<ProfileFailure, bool> existsByUrl(String url) {
+    return TaskEither.tryCatch(
+      () async => await _profileDataSource.getByUrl(url) != null,
       ProfileUnexpectedFailure.new,
     );
   }

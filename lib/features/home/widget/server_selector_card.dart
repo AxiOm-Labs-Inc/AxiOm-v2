@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
@@ -7,12 +5,12 @@ import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/model/failures.dart';
 import 'package:hiddify/core/preferences/preferences_provider.dart';
 import 'package:hiddify/core/utils/preferences_utils.dart';
+import 'package:hiddify/features/proxy/data/server_list_cache.dart';
 import 'package:hiddify/features/proxy/model/proxy_failure.dart';
 import 'package:hiddify/features/proxy/model/server_option.dart';
 import 'package:hiddify/features/proxy/overview/proxies_overview_notifier.dart';
 import 'package:hiddify/features/settings/data/config_option_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class ServerSelectorCard extends HookConsumerWidget {
   const ServerSelectorCard({super.key, this.expanded = false});
@@ -30,7 +28,7 @@ class ServerSelectorCard extends HookConsumerWidget {
     // When the service is not running, fall back to the server list cached
     // from the last connected session so a server can be picked offline.
     Widget offlineOrMessage() {
-      final cached = _readCachedServerOptions(prefs);
+      final cached = readCachedServerOptions(prefs);
       if (cached.isNotEmpty) {
         return _ServerSelectorBody(
           options: cached,
@@ -90,34 +88,6 @@ class ServerSelectorCard extends HookConsumerWidget {
       ),
     );
   }
-}
-
-const _cachedServerOptionsKey = 'server_selector_cached_options';
-
-List<ServerOption> _readCachedServerOptions(SharedPreferences prefs) {
-  final raw = prefs.getString(_cachedServerOptionsKey);
-  if (raw == null || raw.isEmpty) return const [];
-  try {
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    return decoded
-        .map(
-          (e) => ServerOption(
-            country: (e as Map<String, dynamic>)['c'] as String,
-            protocol: (e['p'] as String?) ?? ServerOption.protocolVless,
-            transport: e['t'] as String,
-            rawTag: '',
-            delay: 0,
-          ),
-        )
-        .toList();
-  } catch (_) {
-    return const [];
-  }
-}
-
-Future<void> _writeCachedServerOptions(SharedPreferences prefs, List<ServerOption> options) {
-  final data = options.map((o) => {'c': o.country, 'p': o.protocol, 't': o.transport}).toList();
-  return prefs.setString(_cachedServerOptionsKey, jsonEncode(data));
 }
 
 class _SelectorShell extends StatelessWidget {
@@ -210,7 +180,7 @@ class _ServerSelectorBody extends HookConsumerWidget {
     // Cache the live server list so it can be shown/selected before connecting.
     useEffect(() {
       if (live && options.isNotEmpty) {
-        _writeCachedServerOptions(prefs, options);
+        writeCachedServerOptions(prefs, options);
       }
       return null;
     }, [itemsSignature, live]);
