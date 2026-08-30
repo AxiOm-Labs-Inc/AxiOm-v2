@@ -20,6 +20,7 @@ import com.hiddify.hiddify.constant.Status
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.LinkedList
@@ -115,11 +116,37 @@ class MainActivity : FlutterFragmentActivity(), ServiceConnection.Callback {
             ActivityResultContracts.StartActivityForResult(),
         ) { result ->
             if (result.resultCode == RESULT_OK) {
-                startService0()
+                startServiceWhenVpnPermissionApplied()
             } else {
                 onServiceAlert(Alert.RequestVPNPermission, null)
             }
         }
+
+    /**
+     * Запускает сервис только после того, как система реально применила разрешение на VPN.
+     *
+     * RESULT_OK приходит раньше, чем разрешение вступает в силу: если стартовать сервис
+     * сразу, ядро успевает дёрнуть establish() и получает
+     * "configure tun interface: permission denied". Пользователь видел это при первом
+     * запуске после установки — единственный раз, когда показывается диалог разрешения.
+     *
+     * prepare() возвращает null, когда разрешение уже действует. Ждём этого, но не вечно:
+     * если за отведённое время не применилось, всё равно пробуем стартовать — тогда отказ
+     * дойдёт до пользователя обычным путём, а не потеряется здесь.
+     */
+    private fun startServiceWhenVpnPermissionApplied() {
+        lifecycleScope.launch {
+            repeat(20) {
+                if (VpnService.prepare(this@MainActivity) == null) {
+                    startService0()
+                    return@launch
+                }
+                delay(100)
+            }
+            Log.w(TAG, "VPN permission still not applied after waiting, starting anyway")
+            startService0()
+        }
+    }
 
     override fun onServiceStatusChanged(status: Status) {
         serviceStatus.postValue(status)

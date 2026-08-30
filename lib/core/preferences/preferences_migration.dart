@@ -11,7 +11,11 @@ class PreferencesMigration with InfraLogger {
   Future<void> migrate() async {
     final currentVersion = sharedPreferences.getInt(versionKey) ?? 0;
 
-    final migrationSteps = [PreferencesVersion1Migration(sharedPreferences)];
+    final List<PreferencesMigrationStep> migrationSteps = [
+      PreferencesVersion1Migration(sharedPreferences),
+      PreferencesVersion2Migration(sharedPreferences),
+      PreferencesVersion3Migration(sharedPreferences),
+    ];
 
     if (currentVersion == migrationSteps.length) {
       loggy.debug("already using the latest version (v$currentVersion)");
@@ -106,4 +110,61 @@ class PreferencesVersion1Migration extends PreferencesMigrationStep with InfraLo
     "ipv6Only" => "ipv6_only",
     _ => "",
   };
+}
+
+/// В регионе ru весь .ru/geoip:ru идёт мимо туннеля, а сохранённый direct-dns указывал на
+/// Cloudflare по plain-UDP — его режет DPI, поэтому direct-домены не резолвились и страницы
+/// (Яндекс в первую очередь) висели. Дефолт уже исправлен, но у установленных приложений в
+/// SharedPreferences лежит старое значение, до которого новый дефолт не дотягивается.
+class PreferencesVersion2Migration extends PreferencesMigrationStep with InfraLogger {
+  PreferencesVersion2Migration(super.sharedPreferences);
+
+  /// Значения, которые мог проставить только прежний дефолт. Осознанно выбранный
+  /// пользователем сервер не трогаем.
+  static const _staleDefaults = {"udp://1.1.1.1", "1.1.1.1"};
+
+  @override
+  Future<void> migrate() async {
+    // Ключа нет, если регион ни разу не меняли — тогда действует дефолт, а он ru.
+    if ((sharedPreferences.getString("region") ?? "ru") != "ru") return;
+
+    final directDns = sharedPreferences.getString("direct-dns-address");
+    if (directDns == null || !_staleDefaults.contains(directDns)) return;
+
+    loggy.debug("region=ru: changing [direct-dns-address] from [$directDns] to [udp://77.88.8.8]");
+    await sharedPreferences.setString("direct-dns-address", "udp://77.88.8.8");
+  }
+}
+
+/// Две правки 4.2.1, каждая — с тем же подвохом, что и в v2: дефолт до установленных
+/// приложений не дотягивается, потому что настройки персистентны.
+///
+/// 1. `tun-implementation`: на `gvisor` не работает direct-выход. При region=ru ядро
+///    отправляет `.ru` мимо туннеля, и в этом стеке такие соединения не покидают
+///    устройство — страница висит до таймаута, запросы не доходят даже до сайта. Это и
+///    ломало Яндекс, а следом Госуслуги. На `system` работает.
+/// 2. `ipv6-mode`: у нод FR и NL нет глобального IPv6, соединения на IPv6-адреса рвутся
+///    (сильнее всего страдает Telegram). Прежний дефолт `prefer_ipv4` IPv6 НЕ отключает.
+class PreferencesVersion3Migration extends PreferencesMigrationStep with InfraLogger {
+  PreferencesVersion3Migration(super.sharedPreferences);
+
+  @override
+  Future<void> migrate() async {
+    // Сбрасывается ЛЮБОЕ прежнее значение, включая выбранное пользователем вручную.
+    // В отличие от v2 здесь это осознанно: `gvisor` и `mixed` ломают direct-выход, а
+    // включённый IPv6 рвёт соединения через FR и NL, у которых нет глобального IPv6.
+    // То есть «свой» выбор здесь означает сломанное соединение, а не другое поведение.
+    // Настройки остаются в UI — вернуть их можно, но стартуют все с рабочих значений.
+    final tun = sharedPreferences.getString("tun-implementation");
+    if (tun != "system") {
+      loggy.debug("changing [tun-implementation] from [$tun] to [system]");
+      await sharedPreferences.setString("tun-implementation", "system");
+    }
+
+    final ipv6 = sharedPreferences.getString("ipv6-mode");
+    if (ipv6 != "ipv4_only") {
+      loggy.debug("changing [ipv6-mode] from [$ipv6] to [ipv4_only]");
+      await sharedPreferences.setString("ipv6-mode", "ipv4_only");
+    }
+  }
 }

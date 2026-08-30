@@ -47,9 +47,13 @@ abstract class ConfigOptions {
 
   static final resolveDestination = PreferencesNotifier.create<bool, bool>("resolve-destination", false);
 
+  // У нод FR и NL нет глобального IPv6: клиентские соединения на IPv6-адреса принимаются
+  // ядром и тут же рвутся, приложение повторяет — рвутся Telegram, YouTube, WhatsApp.
+  // ⚠️ `enable` здесь означает `prefer_ipv4`, то есть IPv6 лишь понижен в приоритете, но
+  // НЕ отключён; полностью убирает его только `disable` (`ipv4_only`).
   static final ipv6Mode = PreferencesNotifier.create<IPv6Mode, String>(
     "ipv6-mode",
-    IPv6Mode.enable,
+    IPv6Mode.disable,
     mapFrom: (value) => IPv6Mode.values.firstWhere((e) => e.key == value),
     mapTo: (value) => value.key,
   );
@@ -89,10 +93,17 @@ abstract class ConfigOptions {
       "tcp://1.1.1.1",
       "https://1.1.1.1/dns-query",
       "https://dns.cloudflare.com/dns-query",
+      "udp://77.88.8.8",
       "4.4.2.2",
       "8.8.8.8",
     ]),
-    defaultValueFunction: (ref) => ref.read(region) == Region.cn ? "223.5.5.5" : "1.1.1.1",
+    // Direct-трафик резолвится этим сервером. В регионе ru весь .ru/geoip:ru идёт мимо
+    // туннеля, а plain-UDP к 1.1.1.1 режет DPI — домены не резолвятся и страницы висят.
+    defaultValueFunction: (ref) => switch (ref.read(region)) {
+      Region.cn => "223.5.5.5",
+      Region.ru => "udp://77.88.8.8",
+      _ => "1.1.1.1",
+    },
     validator: (value) => value.isNotBlank,
   );
 
@@ -125,9 +136,13 @@ abstract class ConfigOptions {
     validator: (value) => isPort(value.toString()),
   );
 
+  // 🔴 На gvisor не работает direct-выход: при region=ru ядро отправляет .ru мимо туннеля,
+  // и в этом стеке такие соединения не покидают устройство — запросы не доходят ни до
+  // сайта, ни до наших нод, страница висит до таймаута. Именно это ломало Яндекс, а потом
+  // Госуслуги. Проверено на устройстве: на `system` работает, на `gvisor` нет.
   static final tunImplementation = PreferencesNotifier.create<TunImplementation, String>(
     "tun-implementation",
-    TunImplementation.gvisor,
+    TunImplementation.system,
     mapFrom: TunImplementation.values.byName,
     mapTo: (value) => value.name,
   );
