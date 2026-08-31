@@ -108,6 +108,11 @@
         "clickToUpdate": "Click to update"
       }
     },
+    "telemost": {
+      "title": "Telemost",
+      "comingSoon": "Coming soon",
+      "comingSoonHint": "Whitelist bypass will be available in one of the upcoming updates"
+    },
     "proxies": {
       "title": "Proxies",
       "sort": "Sort proxies",

@@ -20,6 +20,7 @@ import 'package:hiddify/features/settings/overview/sections/route_options_page.d
 import 'package:hiddify/features/settings/overview/sections/tls_tricks_page.dart';
 import 'package:hiddify/features/settings/overview/sections/warp_options_page.dart';
 import 'package:hiddify/features/settings/overview/settings_page.dart';
+import 'package:hiddify/features/telemost/widget/telemost_placeholder_page.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -28,6 +29,7 @@ part 'routing_config_notifier.g.dart';
 // each branch in go router has its own focus scope
 final branchesScope = <String, FocusScopeNode>{
   'home': FocusScopeNode(),
+  'telemost': FocusScopeNode(),
   'profiles': FocusScopeNode(),
   'settings': FocusScopeNode(),
 };
@@ -37,7 +39,7 @@ final loadingConfig = RoutingConfig(
   routes: <RouteBase>[GoRoute(path: '/home', builder: (context, state) => const Material())],
 );
 
-const _branchNames = ['home', 'profiles', 'settings'];
+const _branchNames = ['home', 'telemost', 'profiles', 'settings'];
 
 String getNameOfBranch(int index) => _branchNames[index];
 
@@ -102,7 +104,17 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
                 ),
               ],
             ),
-            // Branch 1: Profiles
+            // Branch 1: Telemost (placeholder until feature ships)
+            StatefulShellBranch(
+              routes: <GoRoute>[
+                GoRoute(
+                  name: 'telemost',
+                  path: '/telemost',
+                  builder: (_, _) => FocusScope(node: branchesScope['telemost'], child: const TelemostPlaceholderPage()),
+                ),
+              ],
+            ),
+            // Branch 2: Profiles
             StatefulShellBranch(
               routes: <GoRoute>[
                 GoRoute(
@@ -123,7 +135,7 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
                 ),
               ],
             ),
-            // Branch 2: Settings
+            // Branch 3: Settings
             StatefulShellBranch(
               routes: <GoRoute>[
                 GoRoute(

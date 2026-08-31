@@ -67,6 +67,7 @@ class MyAdaptiveLayout extends HookConsumerWidget {
       selectedIcon: const AxiOmLogoIcon(size: 24),
       title: t.common.appTitle,
     ),
+    ShellRouteAction.material(Icons.video_call_rounded, t.pages.telemost.title),
     ShellRouteAction.material(Icons.view_list_rounded, t.pages.profiles.title),
     ShellRouteAction.material(Icons.settings_rounded, t.pages.settings.title),
   ];
