@@ -19,7 +19,7 @@ bool _debugIntroPage = false;
 abstract class Preferences {
   static final introCompleted = PreferencesNotifier.create(
     "intro_completed",
-    false,
+    true,
     overrideValue: _debugIntroPage && kDebugMode ? false : null,
   );
 

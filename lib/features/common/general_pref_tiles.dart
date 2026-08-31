@@ -26,7 +26,7 @@ class LocalePrefTile extends ConsumerWidget {
             .showSettingPicker<AppLocale>(
               title: t.pages.settings.general.locale,
               selected: locale,
-              onReset: () => ref.read(localePreferencesProvider.notifier).changeLocale(AppLocale.en),
+              onReset: () => ref.read(localePreferencesProvider.notifier).changeLocale(AppLocale.ru),
               options: AppLocale.values,
               getTitle: (e) => e.localeName,
             );
