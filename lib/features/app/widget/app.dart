@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:accessibility_tools/accessibility_tools.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
@@ -5,17 +7,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:hiddify/core/app_info/app_info_provider.dart';
 import 'package:hiddify/core/directories/directories_provider.dart';
 import 'package:hiddify/core/localization/locale_extensions.dart';
 import 'package:hiddify/core/localization/locale_preferences.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/core/notification/in_app_notification_controller.dart';
+import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/core/router/go_router/go_router_notifier.dart';
 import 'package:hiddify/core/router/go_router/helper/active_breakpoint_notifier.dart';
 import 'package:hiddify/core/theme/app_theme.dart';
 import 'package:hiddify/core/theme/theme_preferences.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
+import 'package:hiddify/features/app_update/notifier/app_update_state.dart';
 import 'package:hiddify/features/connection/widget/connection_wrapper.dart';
 import 'package:hiddify/features/per_app_proxy/overview/per_app_proxy_service_notifier.dart';
 import 'package:hiddify/features/profile/notifier/profiles_update_notifier.dart';
@@ -30,6 +35,24 @@ import 'package:upgrader/upgrader.dart';
 
 bool _debugAccessibility = false;
 bool isOnPauseCalled = false;
+
+Future<void> _openInAppUpdateDialog(WidgetRef ref) async {
+  final appInfo = ref.read(appInfoProvider).valueOrNull;
+  if (appInfo == null) return;
+
+  var appUpdate = ref.read(appUpdateNotifierProvider);
+  if (appUpdate is! AppUpdateStateAvailable) {
+    appUpdate = await ref.read(appUpdateNotifierProvider.notifier).check();
+  }
+
+  if (appUpdate case AppUpdateStateAvailable(:final versionInfo)) {
+    await ref.read(dialogNotifierProvider.notifier).showNewVersion(
+          currentVersion: appInfo.presentVersion,
+          newVersion: versionInfo,
+          canIgnore: false,
+        );
+  }
+}
 
 class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
   const App({super.key});
@@ -96,6 +119,11 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
                     child = UpgradeAlert(
                       upgrader: upgrader,
                       navigatorKey: router.routerDelegate.navigatorKey,
+                      showIgnore: false,
+                      onUpdate: () {
+                        unawaited(_openInAppUpdateDialog(ref));
+                        return false;
+                      },
                       child: child ?? const SizedBox(),
                     );
                     if (kDebugMode && _debugAccessibility) {
