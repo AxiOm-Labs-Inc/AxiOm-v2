@@ -3,6 +3,13 @@
     <channel>
         <title>Release</title>
         <item>
+            <title>Version 4.3.0</title>
+            <pubDate>Mon, 31 Aug 2026 12:30:00 +0000</pubDate>
+            <enclosure
+                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.3.0/AxiOm-v4.3.0-arm64.apk"
+                sparkle:version="4.3.0" sparkle:os="android" />
+        </item>
+        <item>
             <title>Version 4.2.1</title>
             <pubDate>Sun, 30 Aug 2026 18:00:00 +0000</pubDate>
             <enclosure
