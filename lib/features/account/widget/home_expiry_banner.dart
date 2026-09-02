@@ -103,13 +103,7 @@ class HomeExpiryBanner extends HookConsumerWidget {
           borderRadius: BorderRadius.circular(16),
           onTap: () {
             if (expired) {
-              showModalBottomSheet<void>(
-                context: context,
-                isScrollControlled: true,
-                useSafeArea: true,
-                showDragHandle: true,
-                builder: (_) => const PurchaseSheet(),
-              );
+              showPurchaseSheet(context);
             } else {
               UriUtils.tryLaunch(Uri.parse(Constants.telegramBuyBotUrl));
             }

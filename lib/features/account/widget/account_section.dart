@@ -6,26 +6,89 @@ import 'package:hiddify/features/account/model/account_models.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
 import 'package:hiddify/features/account/widget/account_subscription_tile.dart';
+import 'package:hiddify/features/account/widget/purchase_sheet.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Personal Account section in the Profiles page.
 ///
 /// Disconnected → card-button to connect.
 /// Connected → account info + subscription list.
+/// Always → «Купить подписку» and an optional pending-payment chip.
 class AccountSection extends HookConsumerWidget {
   const AccountSection({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(accountNotifierProvider);
+    final pending = ref.watch(pendingPaymentProvider);
     final theme = Theme.of(context);
 
-    return switch (state) {
-      AccountStateRestoring() => _RestoringView(theme: theme),
-      AccountStateConnected(:final session, :final subscriptions) =>
-        _ConnectedView(session: session, subscriptions: subscriptions, theme: theme),
-      _ => _DisconnectedView(theme: theme),
-    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (pending != null) ...[
+          _PendingPaymentChip(
+            onTap: () => showPurchaseSheet(context),
+          ),
+          const SizedBox(height: 12),
+        ],
+        switch (state) {
+          AccountStateRestoring() => _RestoringView(theme: theme),
+          AccountStateConnected(:final session, :final subscriptions) =>
+            _ConnectedView(session: session, subscriptions: subscriptions, theme: theme),
+          _ => _DisconnectedView(theme: theme),
+        },
+        const SizedBox(height: 12),
+        FilledButton.tonalIcon(
+          onPressed: () => showPurchaseSheet(context),
+          icon: const Icon(Icons.shopping_cart_outlined, size: 20),
+          label: Text(pending != null ? 'Продолжить оплату' : 'Купить подписку'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PendingPaymentChip extends StatelessWidget {
+  const _PendingPaymentChip({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.55),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(Icons.pending_actions_rounded, size: 20, color: theme.colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Есть незавершённая оплата', style: theme.textTheme.labelLarge),
+                    Text(
+                      'Нажмите, чтобы продолжить или отменить',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -130,7 +193,6 @@ class _ConnectedView extends HookConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row
             Row(
               children: [
                 Container(
@@ -160,7 +222,6 @@ class _ConnectedView extends HookConsumerWidget {
                     ],
                   ),
                 ),
-                // Menu button
                 PopupMenuButton<String>(
                   onSelected: (value) async {
                     switch (value) {
@@ -189,7 +250,6 @@ class _ConnectedView extends HookConsumerWidget {
               const SizedBox(height: 16),
               const Divider(height: 1),
               const SizedBox(height: 12),
-              // Subscription list
               ...subscriptions.map(
                 (sub) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),

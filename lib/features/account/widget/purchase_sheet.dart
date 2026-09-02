@@ -12,35 +12,93 @@ import 'package:hiddify/features/account/widget/payment_webview_page.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Opens the in-app purchase bottom sheet (tariffs → payment → poll).
+Future<void> showPurchaseSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (_) => const PurchaseSheet(),
+  );
+}
+
+/// Unfinished payment stored while the buyer is away from the sheet.
+class PendingPayment {
+  const PendingPayment({required this.pid, required this.ts, this.url});
+
+  final String pid;
+  final String? url;
+  final int ts;
+
+  Map<String, dynamic> toJson() => {
+        'pid': pid,
+        'ts': ts,
+        if (url != null && url!.isNotEmpty) 'url': url,
+      };
+
+  static PendingPayment? tryParse(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      final pid = m['pid'] as String?;
+      if (pid == null || pid.isEmpty) return null;
+      return PendingPayment(
+        pid: pid,
+        url: m['url'] as String?,
+        ts: (m['ts'] as num).toInt(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool get isExpired {
+    final age = DateTime.now().millisecondsSinceEpoch ~/ 1000 - ts;
+    return age < 0 || age > PurchaseSheet.pendingTtl.inSeconds;
+  }
+}
+
+/// Mirrors [PurchaseSheet] prefs so Profiles / banners can show a pending chip
+/// without opening the sheet. Updated whenever the sheet saves or clears.
+final pendingPaymentProvider = StateProvider<PendingPayment?>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider).valueOrNull;
+  if (prefs == null) return null;
+  final pending = PendingPayment.tryParse(prefs.getString(PurchaseSheet.pendingPaymentKey));
+  if (pending == null || pending.isExpired) return null;
+  return pending;
+});
+
+PendingPayment? _readValidPending(SharedPreferences prefs) {
+  final pending = PendingPayment.tryParse(prefs.getString(PurchaseSheet.pendingPaymentKey));
+  if (pending == null) return null;
+  if (pending.isExpired) {
+    unawaited(prefs.remove(PurchaseSheet.pendingPaymentKey));
+    return null;
+  }
+  return pending;
+}
 
 /// Bottom-sheet for buying or renewing a subscription without leaving the app.
 ///
 /// Shown when the subscription has already expired (while still-active “few
-/// days left” banners still open the Telegram sales bot). The app asks the
-/// backend for the tariff list, creates a payment and opens only the payment
-/// page itself, then polls until the subscription is issued.
+/// days left” banners still open the Telegram sales bot), or from Profiles
+/// via «Купить подписку». See `docs/in-app-payment.md`.
 ///
-/// Supported payment UX: Android (in-app WebView) and Windows (system browser).
-/// iOS is out of scope. See `docs/in-app-payment.md`.
-///
-/// The tariff list is deliberately **not** hardcoded: prices and plans change,
-/// and a shipped build cannot be updated for everyone at once — a hardcoded
-/// price would disagree with what is actually charged.
-///
-/// A payment in flight is persisted (see [_pendingPaymentKey]) before the
-/// payment page opens. The sheet is a modal bottom sheet: one swipe closes it,
-/// and without persistence the poll would die with it — money taken, sub_url
-/// never shown, and for a guest with no Telegram account nowhere to recover it
-/// from. On the next open the sheet resumes the poll instead.
+/// A payment in flight is persisted as `{pid, url, ts}` before the payment
+/// page opens. Closing the WebView or swiping the sheet away no longer loses
+/// the order: the sheet resumes with «Оплата не завершена» and Continue /
+/// Cancel actions.
 class PurchaseSheet extends HookConsumerWidget with PresLogger {
   const PurchaseSheet({super.key});
 
-  /// Payment in flight: {"pid": ..., "ts": epochSeconds}.
-  static const _pendingPaymentKey = 'pending_payment';
+  /// Payment in flight: {"pid": ..., "url": ..., "ts": epochSeconds}.
+  static const pendingPaymentKey = 'pending_payment';
 
-  /// How long a stored payment is still worth polling. The provider keeps an
-  /// unpaid payment alive for about a day; beyond that the record is noise.
-  static const _pendingTtl = Duration(hours: 24);
+  /// How long a stored payment is still worth polling / resuming.
+  static const pendingTtl = Duration(hours: 24);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -48,8 +106,10 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
 
     final tariffs = useState<List<Map<String, dynamic>>?>(null);
     final loadError = useState<String?>(null);
-    final busyIdx = useState<int?>(null); // тариф, по которому идёт оплата
+    final busyIdx = useState<int?>(null);
     final paying = useState(false);
+    final pending = useState<PendingPayment?>(null);
+    final pollTimedOut = useState(false);
     final subUrl = useState<String?>(null);
     final claimUrl = useState<String?>(null);
     final imported = useState(false);
@@ -61,6 +121,8 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     final sessionToken = accountState is AccountStateConnected
         ? accountState.session.sessionToken
         : null;
+
+    final hasPending = pending.value != null;
 
     Future<bool> importSubUrl(String url) async {
       final repo = ref.read(profileRepositoryProvider).valueOrNull;
@@ -75,7 +137,18 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     }
 
     Future<void> clearPending() async {
-      await ref.read(sharedPreferencesProvider).requireValue.remove(_pendingPaymentKey);
+      await ref.read(sharedPreferencesProvider).requireValue.remove(pendingPaymentKey);
+      ref.read(pendingPaymentProvider.notifier).state = null;
+      if (context.mounted) pending.value = null;
+    }
+
+    Future<void> savePending(PendingPayment value) async {
+      await ref.read(sharedPreferencesProvider).requireValue.setString(
+            pendingPaymentKey,
+            jsonEncode(value.toJson()),
+          );
+      ref.read(pendingPaymentProvider.notifier).state = value;
+      if (context.mounted) pending.value = value;
     }
 
     Future<void> onPaymentSucceeded(Map<String, dynamic> payload) async {
@@ -83,24 +156,28 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       final url = payload['sub_url'] as String?;
       final claim = payload['claim_url'] as String?;
       final ok = url != null && url.isNotEmpty && await importSubUrl(url);
-      // Лист могли закрыть, пока шёл импорт: писать в хуки после этого нельзя.
       if (!context.mounted) return;
       subUrl.value = url;
       claimUrl.value = claim;
       imported.value = ok;
       paying.value = false;
       busyIdx.value = null;
+      pollTimedOut.value = false;
+      payError.value = null;
       await ref.read(accountNotifierProvider.notifier).refresh();
     }
 
-    // Опрос статуса: оплата часто завершается молча — webview закрывают руками,
-    // из браузера возвращаются без колбэка. Событию доверять нельзя, поэтому
-    // спрашиваем сервер.
+    void stopPolling() {
+      pollTimer.value?.cancel();
+      pollTimer.value = null;
+      pollInFlight.value = false;
+    }
+
     void startPolling(String pid) {
       final api = ref.read(accountApiProvider);
       var elapsed = 0;
-      pollTimer.value?.cancel();
-      pollInFlight.value = false;
+      stopPolling();
+      pollTimedOut.value = false;
       paying.value = true;
       pollTimer.value = Timer.periodic(const Duration(seconds: 3), (t) async {
         if (pollInFlight.value) return;
@@ -108,8 +185,11 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         if (elapsed > 15 * 60) {
           t.cancel();
           if (!context.mounted) return;
+          // Prefs stay: buyer can «Проверить снова» / «Продолжить оплату».
           paying.value = false;
           busyIdx.value = null;
+          pollTimedOut.value = true;
+          payError.value = 'Время ожидания истекло. Можно проверить статус или открыть оплату снова.';
           return;
         }
         pollInFlight.value = true;
@@ -129,6 +209,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
             if (!context.mounted) return;
             paying.value = false;
             busyIdx.value = null;
+            pollTimedOut.value = false;
             payError.value = status == 'canceled'
                 ? 'Платёж отменён'
                 : 'Платёж не найден';
@@ -139,6 +220,46 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
           pollInFlight.value = false;
         }
       });
+    }
+
+    Future<void> openPaymentPage(String url) async {
+      if (PlatformUtils.isAndroid) {
+        await Navigator.of(context, rootNavigator: true).push<bool>(
+          MaterialPageRoute(builder: (_) => PaymentWebViewPage(url: url)),
+        );
+      } else {
+        await UriUtils.tryLaunch(Uri.parse(url));
+      }
+    }
+
+    Future<void> cancelWaiting() async {
+      stopPolling();
+      await clearPending();
+      if (!context.mounted) return;
+      paying.value = false;
+      busyIdx.value = null;
+      pollTimedOut.value = false;
+      payError.value = null;
+    }
+
+    Future<void> continuePayment() async {
+      final p = pending.value;
+      if (p == null) return;
+      payError.value = null;
+      pollTimedOut.value = false;
+      startPolling(p.pid);
+      final url = p.url;
+      if (url == null || url.isEmpty) return;
+      if (!context.mounted) return;
+      await openPaymentPage(url);
+    }
+
+    Future<void> checkAgain() async {
+      final p = pending.value;
+      if (p == null) return;
+      payError.value = null;
+      pollTimedOut.value = false;
+      startPolling(p.pid);
     }
 
     // ── загрузка каталога и подхват незавершённой оплаты ─────────────────
@@ -159,28 +280,19 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
           }
         });
 
-        // Платёж, начатый в прошлый раз: лист закрыли до подтверждения.
-        Future<void>(() async {
+        Future<void>(() {
           final prefs = ref.read(sharedPreferencesProvider).requireValue;
-          final raw = prefs.getString(_pendingPaymentKey);
-          if (raw == null || disposed) return;
-          String pid;
-          int ts;
-          try {
-            final m = jsonDecode(raw) as Map<String, dynamic>;
-            pid = m['pid'] as String;
-            ts = (m['ts'] as num).toInt();
-          } catch (e) {
-            await prefs.remove(_pendingPaymentKey);
+          final stored = _readValidPending(prefs);
+          if (stored == null || disposed) {
+            if (stored == null) {
+              ref.read(pendingPaymentProvider.notifier).state = null;
+            }
             return;
           }
-          final age = DateTime.now().millisecondsSinceEpoch ~/ 1000 - ts;
-          if (age < 0 || age > _pendingTtl.inSeconds) {
-            await prefs.remove(_pendingPaymentKey);
-            return;
-          }
+          ref.read(pendingPaymentProvider.notifier).state = stored;
           if (disposed) return;
-          startPolling(pid);
+          pending.value = stored;
+          startPolling(stored.pid);
         });
 
         return () {
@@ -193,10 +305,11 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
 
     // ── покупка ──────────────────────────────────────────────────────────
     Future<void> buy(int idx) async {
-      if (paying.value) return;
+      if (paying.value || hasPending) return;
       paying.value = true;
       busyIdx.value = idx;
       payError.value = null;
+      pollTimedOut.value = false;
       try {
         final api = ref.read(accountApiProvider);
         final created = await api.createPayment(
@@ -204,11 +317,8 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
           sessionToken: sessionToken,
         );
 
-        // Лист могли закрыть, пока шёл запрос: и context, и состояние хуков
-        // после этого трогать нельзя.
         if (!context.mounted) return;
 
-        // Скидка 100%: подписка выдаётся сразу, платить нечего.
         if (created['status'] == 'succeeded') {
           await onPaymentSucceeded(created);
           return;
@@ -220,32 +330,16 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
           throw Exception(created['error'] ?? 'Не удалось создать платёж');
         }
 
-        // Запоминаем ДО открытия оплаты: дальше лист может не пережить
-        // возврата в приложение, а платёж уже существует.
-        await ref.read(sharedPreferencesProvider).requireValue.setString(
-              _pendingPaymentKey,
-              jsonEncode({
-                'pid': pid,
-                'ts': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-              }),
-            );
+        final stored = PendingPayment(
+          pid: pid,
+          url: url,
+          ts: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        );
+        await savePending(stored);
         if (!context.mounted) return;
 
-        // Опрос до открытия оплаты: на Android пользователь может уйти в
-        // приложение банка (СБП) надолго, пока await WebView ещё не вернулся.
-        // Без раннего опроса статус не подтянется, пока не закроют экран оплаты.
         startPolling(pid);
-
-        // Android: страница оплаты во встроенном WebView.
-        // Windows: системный браузер (webview_flutter под Windows нет).
-        // iOS не в scope продукта — WebView оплаты для него не используем.
-        if (PlatformUtils.isAndroid) {
-          await Navigator.of(context, rootNavigator: true).push<bool>(
-            MaterialPageRoute(builder: (_) => PaymentWebViewPage(url: url)),
-          );
-        } else {
-          await UriUtils.tryLaunch(Uri.parse(url));
-        }
+        await openPaymentPage(url);
       } catch (e) {
         if (!context.mounted) return;
         paying.value = false;
@@ -322,7 +416,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       );
     }
 
-    // ── список тарифов ───────────────────────────────────────────────────
+    // ── список тарифов (+ recovery незавершённой оплаты) ─────────────────
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -340,6 +434,17 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            if (hasPending) ...[
+              const SizedBox(height: 16),
+              _PendingRecoveryCard(
+                paying: paying.value,
+                timedOut: pollTimedOut.value,
+                hasUrl: pending.value?.url?.isNotEmpty == true,
+                onContinue: continuePayment,
+                onCheckAgain: checkAgain,
+                onCancel: cancelWaiting,
+              ),
+            ],
             const SizedBox(height: 16),
             if (loadError.value != null)
               _ErrorRow(text: 'Не удалось загрузить тарифы. ${loadError.value}')
@@ -363,7 +468,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                       price: '${t['price']} ₽',
                       telemost: t['telemost'] == true,
                       busy: busy,
-                      enabled: !paying.value,
+                      enabled: !paying.value && !hasPending,
                       onTap: () => buy(idx),
                     );
                   },
@@ -373,28 +478,95 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
               const SizedBox(height: 12),
               _ErrorRow(text: payError.value!),
             ],
-            if (paying.value) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PendingRecoveryCard extends StatelessWidget {
+  const _PendingRecoveryCard({
+    required this.paying,
+    required this.timedOut,
+    required this.hasUrl,
+    required this.onContinue,
+    required this.onCheckAgain,
+    required this.onCancel,
+  });
+
+  final bool paying;
+  final bool timedOut;
+  final bool hasUrl;
+  final VoidCallback onContinue;
+  final VoidCallback onCheckAgain;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final subtitle = timedOut
+        ? 'Ожидание истекло — проверьте статус или откройте оплату снова.'
+        : paying
+            ? (PlatformUtils.isAndroid
+                ? 'Ждём подтверждение. Можно снова открыть страницу оплаты.'
+                : 'Ждём оплату в браузере. После оплаты вернитесь сюда.')
+            : 'Есть незавершённый платёж.';
+
+    return Material(
+      color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.55),
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (paying && !timedOut) ...[
                   const SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      PlatformUtils.isAndroid
-                          ? 'Ждём подтверждение оплаты.'
-                          : 'Ждём оплату. Страница оплаты открылась в браузере — '
-                              'после оплаты вернитесь сюда.',
-                      style: theme.textTheme.labelSmall,
-                    ),
-                  ),
+                ] else ...[
+                  Icon(Icons.pending_actions_rounded, size: 20, color: theme.colorScheme.primary),
+                  const SizedBox(width: 10),
                 ],
+                Expanded(
+                  child: Text('Оплата не завершена', style: theme.textTheme.labelLarge),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-            ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (hasUrl)
+                  FilledButton.tonal(
+                    onPressed: onContinue,
+                    child: const Text('Продолжить оплату'),
+                  ),
+                if (timedOut || !paying)
+                  OutlinedButton(
+                    onPressed: onCheckAgain,
+                    child: const Text('Проверить снова'),
+                  ),
+                TextButton(
+                  onPressed: onCancel,
+                  child: const Text('Отменить ожидание'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
