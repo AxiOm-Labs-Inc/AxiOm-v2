@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:hiddify/core/model/app_colors.dart';
-import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
-import 'package:hiddify/features/account/widget/purchase_sheet.dart';
+import 'package:hiddify/features/account/widget/purchase_options_sheet.dart';
 import 'package:hiddify/features/profile/data/profile_parser.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
-import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Session-only dismissal of the expiry banner: hidden until the app restarts
@@ -19,9 +17,10 @@ final expiryBannerDismissedProvider = StateProvider<bool>((ref) => false);
 /// Telegram-account subscriptions and any remote profile in the profile list
 /// (via its `subscription-userinfo` expiry).
 ///
-/// Tap behaviour:
-/// - still active with 3/2/1/0 days left → Telegram sales bot;
-/// - already expired → in-app purchase sheet (payment site).
+/// Tapping offers all three ways to pay — in the app, on the site, in the
+/// sales bot — instead of picking one: the routes are not interchangeable
+/// (promo codes live on the site, purchase history in the bot), and the old
+/// split by expiry state was invisible to the user.
 ///
 /// The close button hides it for the current session only.
 class HomeExpiryBanner extends HookConsumerWidget {
@@ -74,21 +73,18 @@ class HomeExpiryBanner extends HookConsumerWidget {
     final String subtitle;
     final Color color;
     final IconData icon;
-    final bool expired;
 
     if (nearestActiveDays != null && nearestActiveDays <= urgentDays) {
       title = 'Подписка заканчивается';
       subtitle = '${_daysLabel(nearestActiveDays)} — продлите заранее';
       color = const Color(AppColors.warning);
       icon = Icons.schedule_rounded;
-      expired = false;
     } else if (nearestActiveDays == null && anyDated) {
       // Every dated subscription/profile is expired.
       title = 'Подписка истекла';
       subtitle = 'Продлите, чтобы продолжить пользоваться VPN';
       color = const Color(AppColors.danger);
       icon = Icons.error_outline_rounded;
-      expired = true;
     } else {
       return const SizedBox.shrink();
     }
@@ -101,13 +97,7 @@ class HomeExpiryBanner extends HookConsumerWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            if (expired) {
-              showPurchaseSheet(context);
-            } else {
-              UriUtils.tryLaunch(Uri.parse(Constants.telegramBuyBotUrl));
-            }
-          },
+          onTap: () => showPurchaseOptions(context),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(

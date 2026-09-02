@@ -11,6 +11,8 @@ abstract class Constants {
   static const appCastUrl = "https://raw.githubusercontent.com/arsenii-cmd/AxiOm-v2/master/appcast.xml";
   static const telegramChannelUrl = "https://t.me/AxiOm_freedom";
   static const telegramBuyBotUrl = "https://t.me/AxiOm_buy_bot";
+  /// Web storefront with the same tariffs as the in-app sheet.
+  static const purchaseSiteUrl = "https://axiom.arcohouse.space";
   static const telegramSupportBotUrl = "https://t.me/AxiOm_Npv_support_bot";
   static const privacyPolicyUrl = "https://hiddify.com/privacy-policy/";
   static const termsAndConditionsUrl = "https://hiddify.com/terms/";

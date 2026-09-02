@@ -136,9 +136,20 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       ).run();
     }
 
+    // Зеркало для Профилей. ref живёт вместе с листом, а сюда можно попасть
+    // из зависшего onPaymentSucceeded уже после его закрытия — prefs к этому
+    // моменту записаны, и провайдер перечитает их сам.
+    void syncPendingProvider(PendingPayment? value) {
+      try {
+        ref.read(pendingPaymentProvider.notifier).state = value;
+      } catch (e) {
+        loggy.warning('pending provider sync skipped (sheet gone): $e');
+      }
+    }
+
     Future<void> clearPending() async {
       await ref.read(sharedPreferencesProvider).requireValue.remove(pendingPaymentKey);
-      ref.read(pendingPaymentProvider.notifier).state = null;
+      syncPendingProvider(null);
       if (context.mounted) pending.value = null;
     }
 
@@ -147,7 +158,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
             pendingPaymentKey,
             jsonEncode(value.toJson()),
           );
-      ref.read(pendingPaymentProvider.notifier).state = value;
+      syncPendingProvider(value);
       if (context.mounted) pending.value = value;
     }
 
@@ -233,7 +244,28 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     }
 
     Future<void> cancelWaiting() async {
+      final p = pending.value;
       stopPolling();
+      // Спрашиваем сервер до очистки: кнопка отменяет ОЖИДАНИЕ, а не платёж.
+      // Её жмут и после успешной оплаты — опрос мог не успеть тикнуть или
+      // моргнула сеть. Гость без Telegram-аккаунта после очистки prefs теряет
+      // и sub_url, и claim_url, восстановить их неоткуда.
+      if (p != null) {
+        try {
+          final st = await ref
+              .read(accountApiProvider)
+              .getPaymentStatus(p.pid, sessionToken: sessionToken);
+          if (st['status'] == 'succeeded') {
+            if (!context.mounted) return;
+            await onPaymentSucceeded(st);
+            return;
+          }
+        } catch (e) {
+          // Сервер недоступен — отменяем как просили, платёж остаётся на
+          // сервере и подтянется при следующей покупке или через /me.
+          loggy.warning('cancel: status check failed, clearing anyway: $e');
+        }
+      }
       await clearPending();
       if (!context.mounted) return;
       paying.value = false;
@@ -505,6 +537,10 @@ class _PendingRecoveryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final waiting = paying && !timedOut;
+    // Пока опрос идёт, это штатное ожидание, а не проблема: карточку видит и
+    // тот, кто просто вернулся из WebView и ждёт подтверждения.
+    final title = waiting ? 'Ожидаем оплату' : 'Оплата не завершена';
     final subtitle = timedOut
         ? 'Ожидание истекло — проверьте статус или откройте оплату снова.'
         : paying
@@ -523,7 +559,7 @@ class _PendingRecoveryCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                if (paying && !timedOut) ...[
+                if (waiting) ...[
                   const SizedBox(
                     width: 16,
                     height: 16,
@@ -535,7 +571,7 @@ class _PendingRecoveryCard extends StatelessWidget {
                   const SizedBox(width: 10),
                 ],
                 Expanded(
-                  child: Text('Оплата не завершена', style: theme.textTheme.labelLarge),
+                  child: Text(title, style: theme.textTheme.labelLarge),
                 ),
               ],
             ),

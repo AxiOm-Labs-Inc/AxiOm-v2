@@ -20,7 +20,11 @@ class AccountSection extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(accountNotifierProvider);
-    final pending = ref.watch(pendingPaymentProvider);
+    // Провайдер считает срок годности один раз при создании, поэтому суточный
+    // платёж мог протухнуть уже после этого — проверяем на месте, иначе чип
+    // висел бы до перезапуска приложения.
+    final storedPending = ref.watch(pendingPaymentProvider);
+    final pending = (storedPending != null && !storedPending.isExpired) ? storedPending : null;
     final theme = Theme.of(context);
 
     return Column(
