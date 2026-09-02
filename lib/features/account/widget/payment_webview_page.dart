@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 /// Payment page shown inside the app on Android, so buying a subscription
@@ -12,6 +15,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 /// (caught here), and the sheet keeps polling the payment status anyway. If
 /// the redirect never happens — the user pays and closes the page by hand —
 /// polling still reports success.
+///
+/// Non-http(s) navigation is handed to the OS: SBP and bank apps are reached
+/// through custom schemes (sbolpay:, bank1000000…:, intent:) that a WebView
+/// cannot render — left to itself it shows an error page and the payment dies
+/// there.
 class PaymentWebViewPage extends StatefulWidget {
   const PaymentWebViewPage({super.key, required this.url});
 
@@ -25,8 +33,22 @@ class _PaymentWebViewPageState extends State<PaymentWebViewPage> {
   late final WebViewController _controller;
   int _progress = 0;
 
-  /// Marker our return URL carries after a successful payment.
-  static const _paidMarker = 'paid=1';
+  /// Marker our return URL carries after a successful payment. Matched as a
+  /// query parameter rather than a substring: `paid=1` anywhere in a payment
+  /// provider URL would otherwise close the page mid-flow.
+  static bool _isPaidReturn(Uri uri) => uri.queryParameters['paid'] == '1';
+
+  /// Opens a non-http(s) URL with the system handler. [canLaunchUrl] is
+  /// deliberately not consulted: without a `<queries>` manifest entry per
+  /// scheme it answers false on Android 11+, and listing every bank app is
+  /// not maintainable.
+  Future<void> _launchExternal(Uri uri) async {
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('payment: cannot open external scheme [$uri]: $e');
+    }
+  }
 
   @override
   void initState() {
@@ -40,10 +62,19 @@ class _PaymentWebViewPageState extends State<PaymentWebViewPage> {
           },
           onNavigationRequest: (request) {
             if (!mounted) return NavigationDecision.navigate;
-            if (request.url.contains(_paidMarker)) {
+            final uri = Uri.tryParse(request.url);
+            if (uri == null) return NavigationDecision.navigate;
+
+            if (_isPaidReturn(uri)) {
               // Оплата прошла — возвращаемся в приложение, не показывая
               // страницу возврата: подписку всё равно подтвердит опрос статуса.
               Navigator.of(context).maybePop(true);
+              return NavigationDecision.prevent;
+            }
+            // СБП и приложения банков: схема не http(s) — отдаём системе,
+            // WebView такую ссылку открыть не может.
+            if (uri.scheme != 'http' && uri.scheme != 'https') {
+              unawaited(_launchExternal(uri));
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;

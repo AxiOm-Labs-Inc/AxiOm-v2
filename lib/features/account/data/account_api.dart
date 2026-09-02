@@ -70,7 +70,7 @@ class AccountApi with InfraLogger {
       return _decode(res.data, '/me');
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
-        throw AccountUnauthorizedException('/me');
+        throw const AccountUnauthorizedException('/me');
       }
       rethrow;
     }

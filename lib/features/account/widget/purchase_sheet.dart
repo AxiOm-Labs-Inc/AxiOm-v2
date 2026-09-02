@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hiddify/core/preferences/preferences_provider.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
 import 'package:hiddify/features/account/widget/payment_webview_page.dart';
@@ -23,8 +26,21 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// The tariff list is deliberately **not** hardcoded: prices and plans change,
 /// and a shipped build cannot be updated for everyone at once — a hardcoded
 /// price would disagree with what is actually charged.
+///
+/// A payment in flight is persisted (see [_pendingPaymentKey]) before the
+/// payment page opens. The sheet is a modal bottom sheet: one swipe closes it,
+/// and without persistence the poll would die with it — money taken, sub_url
+/// never shown, and for a guest with no Telegram account nowhere to recover it
+/// from. On the next open the sheet resumes the poll instead.
 class PurchaseSheet extends HookConsumerWidget with PresLogger {
   const PurchaseSheet({super.key});
+
+  /// Payment in flight: {"pid": ..., "ts": epochSeconds}.
+  static const _pendingPaymentKey = 'pending_payment';
+
+  /// How long a stored payment is still worth polling. The provider keeps an
+  /// unpaid payment alive for about a day; beyond that the record is noise.
+  static const _pendingTtl = Duration(hours: 24);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -58,19 +74,74 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       ).run();
     }
 
+    Future<void> clearPending() async {
+      await ref.read(sharedPreferencesProvider).requireValue.remove(_pendingPaymentKey);
+    }
+
     Future<void> onPaymentSucceeded(Map<String, dynamic> payload) async {
+      await clearPending();
       final url = payload['sub_url'] as String?;
+      final claim = payload['claim_url'] as String?;
+      final ok = url != null && url.isNotEmpty && await importSubUrl(url);
+      // Лист могли закрыть, пока шёл импорт: писать в хуки после этого нельзя.
+      if (!context.mounted) return;
       subUrl.value = url;
-      claimUrl.value = payload['claim_url'] as String?;
+      claimUrl.value = claim;
+      imported.value = ok;
       paying.value = false;
       busyIdx.value = null;
-      if (url != null && url.isNotEmpty) {
-        imported.value = await importSubUrl(url);
-      }
       await ref.read(accountNotifierProvider.notifier).refresh();
     }
 
-    // ── загрузка каталога ────────────────────────────────────────────────
+    // Опрос статуса: оплата часто завершается молча — webview закрывают руками,
+    // из браузера возвращаются без колбэка. Событию доверять нельзя, поэтому
+    // спрашиваем сервер.
+    void startPolling(String pid) {
+      final api = ref.read(accountApiProvider);
+      var elapsed = 0;
+      pollTimer.value?.cancel();
+      pollInFlight.value = false;
+      paying.value = true;
+      pollTimer.value = Timer.periodic(const Duration(seconds: 3), (t) async {
+        if (pollInFlight.value) return;
+        elapsed += 3;
+        if (elapsed > 15 * 60) {
+          t.cancel();
+          if (!context.mounted) return;
+          paying.value = false;
+          busyIdx.value = null;
+          return;
+        }
+        pollInFlight.value = true;
+        try {
+          final st = await api.getPaymentStatus(pid, sessionToken: sessionToken);
+          if (!context.mounted) {
+            t.cancel();
+            return;
+          }
+          final status = st['status'];
+          if (status == 'succeeded') {
+            t.cancel();
+            await onPaymentSucceeded(st);
+          } else if (status == 'canceled' || status == 'not_found') {
+            t.cancel();
+            await clearPending();
+            if (!context.mounted) return;
+            paying.value = false;
+            busyIdx.value = null;
+            payError.value = status == 'canceled'
+                ? 'Платёж отменён'
+                : 'Платёж не найден';
+          }
+        } catch (e) {
+          loggy.warning('payment poll failed (will retry): $e');
+        } finally {
+          pollInFlight.value = false;
+        }
+      });
+    }
+
+    // ── загрузка каталога и подхват незавершённой оплаты ─────────────────
     useEffect(
       () {
         var disposed = false;
@@ -84,9 +155,34 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                 .toList();
             tariffs.value = list;
           } catch (e) {
-            if (!disposed) loadError.value = '$e';
+            if (!disposed) loadError.value = _describeError(e);
           }
         });
+
+        // Платёж, начатый в прошлый раз: лист закрыли до подтверждения.
+        Future<void>(() async {
+          final prefs = ref.read(sharedPreferencesProvider).requireValue;
+          final raw = prefs.getString(_pendingPaymentKey);
+          if (raw == null || disposed) return;
+          String pid;
+          int ts;
+          try {
+            final m = jsonDecode(raw) as Map<String, dynamic>;
+            pid = m['pid'] as String;
+            ts = (m['ts'] as num).toInt();
+          } catch (e) {
+            await prefs.remove(_pendingPaymentKey);
+            return;
+          }
+          final age = DateTime.now().millisecondsSinceEpoch ~/ 1000 - ts;
+          if (age < 0 || age > _pendingTtl.inSeconds) {
+            await prefs.remove(_pendingPaymentKey);
+            return;
+          }
+          if (disposed) return;
+          startPolling(pid);
+        });
+
         return () {
           disposed = true;
           pollTimer.value?.cancel();
@@ -123,6 +219,18 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         if (url == null || pid == null) {
           throw Exception(created['error'] ?? 'Не удалось создать платёж');
         }
+
+        // Запоминаем ДО открытия оплаты: дальше лист может не пережить
+        // возврата в приложение, а платёж уже существует.
+        await ref.read(sharedPreferencesProvider).requireValue.setString(
+              _pendingPaymentKey,
+              jsonEncode({
+                'pid': pid,
+                'ts': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+              }),
+            );
+        if (!context.mounted) return;
+
         // Android: страница оплаты во встроенном WebView.
         // Windows: системный браузер (webview_flutter под Windows нет).
         // iOS не в scope продукта — WebView оплаты для него не используем.
@@ -135,49 +243,12 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         }
 
         if (!context.mounted) return;
-
-        // Оплата может завершиться молча: webview закрывают руками, из браузера
-        // возвращаются без колбэка. Поэтому статус опрашиваем, а не ждём события.
-        var elapsed = 0;
-        pollTimer.value?.cancel();
-        pollInFlight.value = false;
-        pollTimer.value = Timer.periodic(const Duration(seconds: 3), (t) async {
-          if (pollInFlight.value) return;
-          elapsed += 3;
-          if (elapsed > 15 * 60) {
-            t.cancel();
-            paying.value = false;
-            busyIdx.value = null;
-            return;
-          }
-          pollInFlight.value = true;
-          try {
-            final st = await api.getPaymentStatus(pid, sessionToken: sessionToken);
-            if (!context.mounted) {
-              t.cancel();
-              return;
-            }
-            final status = st['status'];
-            if (status == 'succeeded') {
-              t.cancel();
-              await onPaymentSucceeded(st);
-            } else if (status == 'canceled') {
-              t.cancel();
-              paying.value = false;
-              busyIdx.value = null;
-              payError.value = 'Платёж отменён';
-            }
-          } catch (e) {
-            loggy.warning('payment poll failed (will retry): $e');
-          } finally {
-            pollInFlight.value = false;
-          }
-        });
+        startPolling(pid);
       } catch (e) {
         if (!context.mounted) return;
         paying.value = false;
         busyIdx.value = null;
-        payError.value = '$e';
+        payError.value = _describeError(e);
       }
     }
 
@@ -269,7 +340,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
             ),
             const SizedBox(height: 16),
             if (loadError.value != null)
-              _ErrorRow(text: 'Не удалось загрузить тарифы: ${loadError.value}')
+              _ErrorRow(text: 'Не удалось загрузить тарифы. ${loadError.value}')
             else if (tariffs.value == null)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 28),
@@ -327,6 +398,28 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       ),
     );
   }
+}
+
+/// Turns an exception into something a buyer can act on. A raw
+/// `DioException [bad response]: …` in the sheet tells the user nothing, and
+/// 429 in particular is transient — the guest rate limit on the backend is
+/// keyed by IP, so it can be hit by someone else behind the same exit node.
+String _describeError(Object e) {
+  if (e is DioException) {
+    final code = e.response?.statusCode;
+    if (code == 429) {
+      return 'Сервер занят, попробуйте через минуту.';
+    }
+    final data = e.response?.data;
+    if (data is Map && data['error'] is String) {
+      return data['error'] as String;
+    }
+    if (code != null) {
+      return 'Сервер ответил ошибкой ($code).';
+    }
+    return 'Нет связи с сервером. Проверьте подключение.';
+  }
+  return '$e';
 }
 
 class _TariffTile extends StatelessWidget {
