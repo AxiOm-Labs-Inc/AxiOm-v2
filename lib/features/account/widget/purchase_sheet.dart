@@ -78,6 +78,10 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
           sessionToken: sessionToken,
         );
 
+        // Лист могли закрыть, пока шёл запрос: и context, и состояние хуков
+        // после этого трогать нельзя.
+        if (!context.mounted) return;
+
         // Скидка 100%: подписка выдаётся сразу, платить нечего.
         if (created['status'] == 'succeeded') {
           subUrl.value = created['sub_url'] as String?;
@@ -103,8 +107,10 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
           await UriUtils.tryLaunch(Uri.parse(url));
         }
 
-        // Платёж уходит во внешний браузер, вернуться в приложение может и
-        // молча — поэтому опрашиваем статус, а не ждём возврата с колбэком.
+        if (!context.mounted) return;
+
+        // Оплата может завершиться молча: webview закрывают руками, из браузера
+        // возвращаются без колбэка. Поэтому статус опрашиваем, а не ждём события.
         var elapsed = 0;
         pollTimer.value?.cancel();
         pollTimer.value = Timer.periodic(const Duration(seconds: 3), (t) async {
@@ -117,6 +123,10 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
           }
           try {
             final st = await api.getPaymentStatus(pid, sessionToken: sessionToken);
+            if (!context.mounted) {
+              t.cancel();
+              return;
+            }
             final status = st['status'];
             if (status == 'succeeded') {
               t.cancel();
@@ -135,6 +145,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
           }
         });
       } catch (e) {
+        if (!context.mounted) return;
         paying.value = false;
         busyIdx.value = null;
         payError.value = '$e';
@@ -223,7 +234,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: tariffs.value!.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, i) {
                     final t = tariffs.value![i];
                     final idx = t['idx'] as int;

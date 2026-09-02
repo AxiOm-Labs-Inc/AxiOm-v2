@@ -40,6 +40,7 @@ class _PaymentWebViewPageState extends State<PaymentWebViewPage> {
             if (mounted) setState(() => _progress = p);
           },
           onNavigationRequest: (request) {
+            if (!mounted) return NavigationDecision.navigate;
             if (request.url.contains(_paidMarker)) {
               // Оплата прошла — возвращаемся в приложение, не показывая
               // страницу возврата: подписку всё равно подтвердит опрос статуса.
