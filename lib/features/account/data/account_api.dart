@@ -133,7 +133,7 @@ class AccountApi with InfraLogger {
 
   // ── GET /api/app/payment/status ────────────────────────────────────────
 
-  /// Polls a payment. Status is one of pending | succeeded | canceled.
+  /// Polls a payment. Status is one of pending | succeeded | canceled | not_found.
   Future<Map<String, dynamic>> getPaymentStatus(
     String paymentId, {
     String? sessionToken,

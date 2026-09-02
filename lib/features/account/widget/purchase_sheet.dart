@@ -231,6 +231,11 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
             );
         if (!context.mounted) return;
 
+        // Опрос до открытия оплаты: на Android пользователь может уйти в
+        // приложение банка (СБП) надолго, пока await WebView ещё не вернулся.
+        // Без раннего опроса статус не подтянется, пока не закроют экран оплаты.
+        startPolling(pid);
+
         // Android: страница оплаты во встроенном WebView.
         // Windows: системный браузер (webview_flutter под Windows нет).
         // iOS не в scope продукта — WebView оплаты для него не используем.
@@ -241,9 +246,6 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         } else {
           await UriUtils.tryLaunch(Uri.parse(url));
         }
-
-        if (!context.mounted) return;
-        startPolling(pid);
       } catch (e) {
         if (!context.mounted) return;
         paying.value = false;
@@ -401,9 +403,9 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
 }
 
 /// Turns an exception into something a buyer can act on. A raw
-/// `DioException [bad response]: …` in the sheet tells the user nothing, and
-/// 429 in particular is transient — the guest rate limit on the backend is
-/// keyed by IP, so it can be hit by someone else behind the same exit node.
+/// `DioException [bad response]: …` in the sheet tells the user nothing.
+/// 429 on `/payment/status` is rare now (limit keyed by `pid`), but creation
+/// and tariffs still rate-limit by Authorization/IP — show a clear retry hint.
 String _describeError(Object e) {
   if (e is DioException) {
     final code = e.response?.statusCode;
