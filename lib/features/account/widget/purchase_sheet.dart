@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
+import 'package:hiddify/features/account/widget/payment_webview_page.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -91,7 +92,16 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         if (url == null || pid == null) {
           throw Exception(created['error'] ?? 'Не удалось создать платёж');
         }
-        await UriUtils.tryLaunch(Uri.parse(url));
+        // Оплата внутри приложения там, где webview существует.
+        // webview_flutter умеет android/ios/macos; на windows/linux его нет,
+        // и единственный рабочий путь — системный браузер.
+        if (PlatformUtils.isMobile) {
+          await Navigator.of(context, rootNavigator: true).push<bool>(
+            MaterialPageRoute(builder: (_) => PaymentWebViewPage(url: url)),
+          );
+        } else {
+          await UriUtils.tryLaunch(Uri.parse(url));
+        }
 
         // Платёж уходит во внешний браузер, вернуться в приложение может и
         // молча — поэтому опрашиваем статус, а не ждём возврата с колбэком.
@@ -245,8 +255,10 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Ждём оплату. Окно оплаты открылось в браузере — '
-                      'после оплаты вернитесь сюда.',
+                      PlatformUtils.isMobile
+                          ? 'Ждём подтверждение оплаты.'
+                          : 'Ждём оплату. Страница оплаты открылась в браузере — '
+                              'после оплаты вернитесь сюда.',
                       style: theme.textTheme.labelSmall,
                     ),
                   ),
