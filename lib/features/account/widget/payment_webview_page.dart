@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-/// Payment page shown inside the app, so buying a subscription no longer
-/// throws the user out into a browser.
+/// Payment page shown inside the app on Android, so buying a subscription
+/// no longer throws the user out into a browser.
 ///
-/// Only used where a webview exists: `webview_flutter` supports Android, iOS
-/// and macOS, but not Windows or Linux — desktop builds keep opening the
-/// payment page in the system browser (see [PurchaseSheet]).
+/// Target platforms for AxiOm payment UX: **Android** (this WebView) and
+/// **Windows** (system browser from [PurchaseSheet]). iOS is out of scope.
 ///
 /// Closing is driven by two independent signals, because neither alone is
 /// reliable: the payment provider redirects to our return URL on success

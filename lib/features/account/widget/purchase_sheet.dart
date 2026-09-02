@@ -6,18 +6,21 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
 import 'package:hiddify/features/account/widget/payment_webview_page.dart';
+import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Bottom-sheet for buying or renewing a subscription without leaving the app.
 ///
-/// Before v4.4 the expiry banner sent the user to the Telegram sales bot; the
-/// purchase happened outside the app and came back as a link to paste. Here the
-/// app asks the backend for the tariff list, creates a payment and opens only
-/// the payment page itself, then polls until the subscription is issued.
+/// Shown when the subscription has already expired (while still-active “few
+/// days left” banners still open the Telegram sales bot). The app asks the
+/// backend for the tariff list, creates a payment and opens only the payment
+/// page itself, then polls until the subscription is issued.
 ///
-/// The tariff list is deliberately **not** hardcoded: prices and plans change
-/// (they were renamed and yearly plans replaced by three-month ones in August),
+/// Supported payment UX: Android (in-app WebView) and Windows (system browser).
+/// iOS is out of scope. See `docs/in-app-payment.md`.
+///
+/// The tariff list is deliberately **not** hardcoded: prices and plans change,
 /// and a shipped build cannot be updated for everyone at once — a hardcoded
 /// price would disagree with what is actually charged.
 class PurchaseSheet extends HookConsumerWidget with PresLogger {
@@ -32,13 +35,40 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     final busyIdx = useState<int?>(null); // тариф, по которому идёт оплата
     final paying = useState(false);
     final subUrl = useState<String?>(null);
+    final claimUrl = useState<String?>(null);
+    final imported = useState(false);
     final payError = useState<String?>(null);
     final pollTimer = useRef<Timer?>(null);
+    final pollInFlight = useRef(false);
 
     final accountState = ref.watch(accountNotifierProvider);
     final sessionToken = accountState is AccountStateConnected
         ? accountState.session.sessionToken
         : null;
+
+    Future<bool> importSubUrl(String url) async {
+      final repo = ref.read(profileRepositoryProvider).valueOrNull;
+      if (repo == null) return false;
+      return repo.upsertRemote(url).match(
+        (err) {
+          loggy.warning('post-payment profile import failed: $err');
+          return false;
+        },
+        (_) => true,
+      ).run();
+    }
+
+    Future<void> onPaymentSucceeded(Map<String, dynamic> payload) async {
+      final url = payload['sub_url'] as String?;
+      subUrl.value = url;
+      claimUrl.value = payload['claim_url'] as String?;
+      paying.value = false;
+      busyIdx.value = null;
+      if (url != null && url.isNotEmpty) {
+        imported.value = await importSubUrl(url);
+      }
+      await ref.read(accountNotifierProvider.notifier).refresh();
+    }
 
     // ── загрузка каталога ────────────────────────────────────────────────
     useEffect(
@@ -84,10 +114,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
 
         // Скидка 100%: подписка выдаётся сразу, платить нечего.
         if (created['status'] == 'succeeded') {
-          subUrl.value = created['sub_url'] as String?;
-          paying.value = false;
-          busyIdx.value = null;
-          await ref.read(accountNotifierProvider.notifier).refresh();
+          await onPaymentSucceeded(created);
           return;
         }
 
@@ -96,10 +123,10 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         if (url == null || pid == null) {
           throw Exception(created['error'] ?? 'Не удалось создать платёж');
         }
-        // Оплата внутри приложения там, где webview существует.
-        // webview_flutter умеет android/ios/macos; на windows/linux его нет,
-        // и единственный рабочий путь — системный браузер.
-        if (PlatformUtils.isMobile) {
+        // Android: страница оплаты во встроенном WebView.
+        // Windows: системный браузер (webview_flutter под Windows нет).
+        // iOS не в scope продукта — WebView оплаты для него не используем.
+        if (PlatformUtils.isAndroid) {
           await Navigator.of(context, rootNavigator: true).push<bool>(
             MaterialPageRoute(builder: (_) => PaymentWebViewPage(url: url)),
           );
@@ -113,7 +140,9 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         // возвращаются без колбэка. Поэтому статус опрашиваем, а не ждём события.
         var elapsed = 0;
         pollTimer.value?.cancel();
+        pollInFlight.value = false;
         pollTimer.value = Timer.periodic(const Duration(seconds: 3), (t) async {
+          if (pollInFlight.value) return;
           elapsed += 3;
           if (elapsed > 15 * 60) {
             t.cancel();
@@ -121,6 +150,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
             busyIdx.value = null;
             return;
           }
+          pollInFlight.value = true;
           try {
             final st = await api.getPaymentStatus(pid, sessionToken: sessionToken);
             if (!context.mounted) {
@@ -130,10 +160,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
             final status = st['status'];
             if (status == 'succeeded') {
               t.cancel();
-              subUrl.value = st['sub_url'] as String?;
-              paying.value = false;
-              busyIdx.value = null;
-              await ref.read(accountNotifierProvider.notifier).refresh();
+              await onPaymentSucceeded(st);
             } else if (status == 'canceled') {
               t.cancel();
               paying.value = false;
@@ -142,6 +169,8 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
             }
           } catch (e) {
             loggy.warning('payment poll failed (will retry): $e');
+          } finally {
+            pollInFlight.value = false;
           }
         });
       } catch (e) {
@@ -154,6 +183,12 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
 
     // ── экран «оплачено» ─────────────────────────────────────────────────
     if (subUrl.value != null) {
+      final hint = imported.value
+          ? 'Ссылка на подписку добавлена в профили. Если профиль не появился — '
+              'скопируйте ссылку и добавьте вручную.'
+          : 'Скопируйте ссылку и добавьте её в профили вручную.';
+      final claim = claimUrl.value;
+
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -169,11 +204,14 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                 ],
               ),
               const SizedBox(height: 12),
-              Text(
-                'Ссылка на подписку добавлена в профили. Если профиль не появился — '
-                'скопируйте ссылку и добавьте вручную.',
-                style: theme.textTheme.bodySmall,
-              ),
+              Text(hint, style: theme.textTheme.bodySmall),
+              if (claim != null && claim.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Чтобы привязать покупку к Telegram-аккаунту, откройте ссылку ниже.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
               const SizedBox(height: 12),
               SelectableText(
                 subUrl.value!,
@@ -190,6 +228,14 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                     icon: const Icon(Icons.copy_rounded, size: 18),
                     label: const Text('Скопировать'),
                   ),
+                  if (claim != null && claim.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => UriUtils.tryLaunch(Uri.parse(claim)),
+                      icon: const Icon(Icons.link_rounded, size: 18),
+                      label: const Text('Привязать'),
+                    ),
+                  ],
                   const Spacer(),
                   FilledButton(
                     onPressed: () => Navigator.of(context).pop(),
@@ -237,7 +283,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, i) {
                     final t = tariffs.value![i];
-                    final idx = t['idx'] as int;
+                    final idx = (t['idx'] as num).toInt();
                     final busy = busyIdx.value == idx;
                     return _TariffTile(
                       name: '${t['name']}',
@@ -266,7 +312,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      PlatformUtils.isMobile
+                      PlatformUtils.isAndroid
                           ? 'Ждём подтверждение оплаты.'
                           : 'Ждём оплату. Страница оплаты открылась в браузере — '
                               'после оплаты вернитесь сюда.',
