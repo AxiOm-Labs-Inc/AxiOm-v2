@@ -601,6 +601,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                     featured: i == 0 && shown.length > 1,
                     anchor: catalog.anchorPrice(shown[i]),
                     cheaper: i == 0 && shown.length > 1 ? shown[1] : null,
+                    richer: i > 0 ? shown.first : null,
                     telemostElsewhere: catalog.anyTelemost,
                     busy: busyIdx.value == shown[i].idx,
                     enabled: interactive,
@@ -1045,6 +1046,14 @@ class _Segmented<T> extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: cs.surface,
                             borderRadius: BorderRadius.circular(9),
+                            border: Border.all(color: cs.outlineVariant),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.16),
+                                blurRadius: 5,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -1114,6 +1123,7 @@ class _PlanCard extends StatelessWidget {
     required this.featured,
     required this.anchor,
     required this.cheaper,
+    required this.richer,
     required this.telemostElsewhere,
     required this.busy,
     required this.enabled,
@@ -1126,6 +1136,9 @@ class _PlanCard extends StatelessWidget {
 
   /// Соседний тариф подешевле — нужен, чтобы показать разницу в день.
   final _Plan? cheaper;
+
+  /// Старший тариф — с ним сравниваем, чтобы показать, чего здесь нет.
+  final _Plan? richer;
   final bool telemostElsewhere;
   final bool busy;
   final bool enabled;
@@ -1229,9 +1242,14 @@ class _PlanCard extends StatelessWidget {
           _bullet(context, plan.limitLine, muted: muted),
           for (final f in plan.features)
             _bullet(context, f.text, muted: muted, sub: f.sub),
-          if (plan.telemost)
-            _bullet(context, 'Доступ в Telemost', muted: muted)
-          else if (telemostElsewhere)
+          if (plan.telemost) _bullet(context, 'Доступ в Telemost', muted: muted),
+          // Что теряет тот, кто выберет тариф подешевле. Пункты выводим из
+          // самого каталога, а не из зашитого списка: пропадёт различие в
+          // конфиге — пропадёт и строка.
+          if (richer != null)
+            for (final gap in _missingVersus(plan, richer!))
+              _bullet(context, gap, muted: cs.onSurfaceVariant, absent: true)
+          else if (!plan.telemost && telemostElsewhere)
             _bullet(context, 'Без Telemost', muted: cs.onSurfaceVariant, absent: true),
           if (featured && other != null && perDay >= 1)
             Container(
@@ -1257,23 +1275,23 @@ class _PlanCard extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: featured ? 46 : 42,
-            child: featured
-                ? FilledButton(
-                    onPressed: enabled && !busy ? onTap : null,
-                    child: busy
-                        ? _ButtonSpinner(color: cs.onPrimary)
-                        : Text('Оплатить ${plan.price} ₽'),
-                  )
-                : OutlinedButton(
-                    onPressed: enabled && !busy ? onTap : null,
-                    child: busy
-                        ? _ButtonSpinner(color: cs.primary)
-                        : Text('Взять «${plan.tier}» за ${plan.price} ₽'),
-                  ),
-          ),
+          if (featured)
+            _PayButton(
+              label: 'Оплатить ${plan.price} ₽',
+              busy: busy,
+              onTap: enabled && !busy ? onTap : null,
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              height: 42,
+              child: OutlinedButton(
+                onPressed: enabled && !busy ? onTap : null,
+                child: busy
+                    ? _ButtonSpinner(color: cs.primary)
+                    : Text('Взять «${plan.tier}» за ${plan.price} ₽'),
+              ),
+            ),
         ],
       ),
     );
@@ -1431,6 +1449,117 @@ class _CurrentSubscriptionStrip extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Чего в тарифе [cheap] нет по сравнению со старшим [rich]. Считаем по
+/// каталогу, а не по зашитому списку: строки-различия живут в config.py, и
+/// если там что-то уравняют, пункт исчезнет сам.
+///
+/// Сравнения намеренно узкие — только то, что различает линейки на деле:
+/// страна, число способов подключения и Telemost. Полная разница текстов
+/// features дала бы «минус» на строку про серверы целиком, хотя серверы есть
+/// в обоих тарифах.
+List<String> _missingVersus(_Plan cheap, _Plan rich) {
+  final out = <String>[];
+
+  bool mentionsRussia(_Plan p) =>
+      p.rawFeatures.any((f) => f.contains('Росси'));
+  if (mentionsRussia(rich) && !mentionsRussia(cheap)) {
+    out.add('Без сервера в России');
+  }
+
+  // Способы подключения перечислены вложенными пунктами; когда их нет,
+  // способ ровно один.
+  int ways(_Plan p) => math.max(1, p.features.where((f) => f.sub).length);
+  final richWays = ways(rich);
+  final cheapWays = ways(cheap);
+  if (richWays > cheapWays) {
+    out.add(cheapWays == 1
+        ? 'Один способ подключения вместо $richWays'
+        : '$cheapWays ${_plural(cheapWays, 'способ', 'способа', 'способов')} подключения вместо $richWays');
+  }
+
+  if (rich.telemost && !cheap.telemost) out.add('Без Telemost');
+  return out;
+}
+
+/// Кнопка оплаты старшего тарифа. Обычная FilledButton весит ровно столько
+/// же, сколько «Взять Эконом» рядом, — а она и есть то действие, ради
+/// которого экран открыли.
+class _PayButton extends StatelessWidget {
+  const _PayButton({required this.label, required this.busy, this.onTap});
+
+  final String label;
+  final bool busy;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final active = onTap != null;
+    // Второй цвет градиента берём из той же схемы, а не подбираем константу:
+    // тема собирается из seed-цвета, и захардкоженный оттенок разъехался бы
+    // с ней при первой же смене брендового цвета.
+    final accent = Color.lerp(cs.primary, cs.tertiary, 0.45)!;
+
+    return Opacity(
+      opacity: active ? 1 : 0.55,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [cs.primary, accent],
+          ),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: cs.primary.withValues(alpha: 0.32),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: onTap,
+            child: SizedBox(
+              height: 52,
+              width: double.infinity,
+              child: Center(
+                child: busy
+                    ? _ButtonSpinner(color: cs.onPrimary)
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            label,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: cs.onPrimary,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 18,
+                            color: cs.onPrimary,
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
