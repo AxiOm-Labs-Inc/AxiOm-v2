@@ -3,12 +3,12 @@ import 'package:flutter/services.dart';
 
 abstract class Constants {
   static const appName = "AxiOm";
-  static const githubUrl = "https://github.com/arsenii-cmd/AxiOm-v2";
-  static const licenseUrl = "https://github.com/arsenii-cmd/AxiOm-v2?tab=License-1-ov-file#readme";
-  static const githubReleasesApiUrl = "https://api.github.com/repos/arsenii-cmd/AxiOm-v2/releases";
-  static const githubLatestReleaseUrl = "https://github.com/arsenii-cmd/AxiOm-v2/releases/latest";
+  static const githubUrl = "https://github.com/AxiOm-Labs-Inc/AxiOm-v2";
+  static const licenseUrl = "https://github.com/AxiOm-Labs-Inc/AxiOm-v2?tab=License-1-ov-file#readme";
+  static const githubReleasesApiUrl = "https://api.github.com/repos/AxiOm-Labs-Inc/AxiOm-v2/releases";
+  static const githubLatestReleaseUrl = "https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/latest";
   static const accountApiBaseUrl = "https://axiom.arcohouse.space";
-  static const appCastUrl = "https://raw.githubusercontent.com/arsenii-cmd/AxiOm-v2/master/appcast.xml";
+  static const appCastUrl = "https://raw.githubusercontent.com/AxiOm-Labs-Inc/AxiOm-v2/master/appcast.xml";
   static const telegramChannelUrl = "https://t.me/AxiOm_freedom";
   static const telegramBuyBotUrl = "https://t.me/AxiOm_buy_bot";
   /// Web storefront with the same tariffs as the in-app sheet.
