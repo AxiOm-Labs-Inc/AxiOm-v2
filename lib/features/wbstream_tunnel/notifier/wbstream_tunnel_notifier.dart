@@ -8,6 +8,7 @@ import 'package:hiddify/features/connection/data/connection_data_providers.dart'
 import 'package:hiddify/features/connection/model/core_owner.dart';
 import 'package:hiddify/features/settings/data/battery_optimization_repository.dart';
 import 'package:hiddify/features/settings/data/config_option_repository.dart';
+import 'package:hiddify/features/wbstream_tunnel/data/telemost_credentials_service.dart';
 import 'package:hiddify/features/wbstream_tunnel/data/wbstream_config_service.dart';
 import 'package:hiddify/features/wbstream_tunnel/data/wbstream_link_provider.dart';
 import 'package:hiddify/features/wbstream_tunnel/data/wbstream_relay_service.dart';
@@ -83,6 +84,17 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   Completer<bool>? _attemptCompleter;
   WbstreamSocks? _socks;
 
+  /// Секрет Телемоста этой сессии подключения. Пусто — идём без авторизации:
+  /// пока держатели не в strict, это рабочий путь, а в strict такой клиент
+  /// получит предсказуемый отказ.
+  String? _tmSecret;
+
+  /// Причина последнего отказа держателя (`auth_denied:<reason>`) и признак
+  /// того, что секрет за эту активацию уже обновляли — иначе `unknown_uid`
+  /// зациклил бы обход кандидатов на запросах к RU.
+  String? _lastDenyReason;
+  bool _credentialsRefreshed = false;
+
   /// True once the data-flow probe has passed for the running relay. Gates
   /// status handling: only a verified tunnel may show WbstreamConnected/
   /// WbstreamLost, so the SFU reconnect cycle neither flashes «connected»
@@ -156,6 +168,10 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     unawaited(_maybeRequestBatteryExemption());
 
     state = const WbstreamStarting();
+    _credentialsRefreshed = false;
+    // Секрет берётся один раз за активацию: держателю он не отдаётся, из него
+    // считается одноразовое доказательство на каждую комнату.
+    _tmSecret = await _ref.read(telemostCredentialsServiceProvider).secret();
     final roomId = await _connectToAnyRoom();
     if (roomId == null) {
       if (state is! WbstreamError) {
@@ -223,11 +239,34 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     for (final (roomId, slot) in candidates) {
       if (!WbstreamSettings.isValidRoomId(roomId)) continue;
       loggy.info('wbstream: trying room $roomId (slot ${slot ?? "own"})');
+      _lastDenyReason = null;
       if (await _startAndWait(roomId, _connectTimeout)) {
         await _rememberRoom(roomId, slot);
         return roomId;
       }
       await _service.stop();
+      final deny = _lastDenyReason;
+      if (deny == null) continue;
+      // Держатель нас не опознал: на сервере подняли поколение секрета
+      // (отзыв доступа) — обновляем и пробуем ту же комнату ещё раз.
+      if (deny == 'unknown_uid' && !_credentialsRefreshed) {
+        _credentialsRefreshed = true;
+        _tmSecret = await _ref
+            .read(telemostCredentialsServiceProvider)
+            .secret(forceRefresh: true);
+        _lastDenyReason = null;
+        if (await _startAndWait(roomId, _connectTimeout)) {
+          await _rememberRoom(roomId, slot);
+          return roomId;
+        }
+        await _service.stop();
+      }
+      // Отказ по существу одинаков во всех комнатах — обходить их незачем.
+      if (_isTerminalDeny(_lastDenyReason)) {
+        state = WbstreamError(_denyMessage(_lastDenyReason!));
+        await _forgetRoom();
+        return null;
+      }
     }
     await _forgetRoom();
     return null;
@@ -263,7 +302,10 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     _tunnelVerified = false;
     _attemptCompleter = Completer<bool>();
     try {
-      _socks = await _service.start(_settings.copyWith(roomId: roomId));
+      _socks = await _service.start(
+        _settings.copyWith(roomId: roomId),
+        tmSecret: _tmSecret,
+      );
     } catch (e) {
       loggy.warning('wbstream: start failed: $e');
       state = WbstreamError('Не удалось запустить relay: $e');
@@ -599,6 +641,25 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     }
   }
 
+  // ── Авторизация Телемоста ──────────────────────────────────────────────
+
+  /// Отказ, который повторится в любой комнате: дело в самом аккаунте.
+  static bool _isTerminalDeny(String? reason) =>
+      reason == 'no_telemost' || reason == 'no_subscription' || reason == 'no_account';
+
+  static String _denyMessage(String reason) {
+    switch (reason) {
+      case 'no_subscription':
+        return 'Подписка неактивна — Телемост недоступен';
+      case 'no_telemost':
+        return 'В вашем тарифе нет Телемоста';
+      case 'no_account':
+        return 'Подключите Telegram-аккаунт, чтобы пользоваться Телемостом';
+      default:
+        return 'Не удалось подтвердить доступ к Телемосту';
+    }
+  }
+
   // ── Status handling ────────────────────────────────────────────────────
 
   void _completeAttempt(bool value) {
@@ -641,7 +702,16 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
         if (_tunnelVerified) state = const WbstreamLost();
         _completeAttempt(false);
       case 'error':
-        state = WbstreamError(event.message ?? 'неизвестная ошибка relay');
+        final message = event.message ?? '';
+        if (message.startsWith('auth_denied:')) {
+          // Отказ авторизации — не поломка relay. Что делать дальше, решает
+          // обход кандидатов: в большинстве причин лечение — следующая комната.
+          _lastDenyReason = message.substring('auth_denied:'.length);
+          loggy.info('wbstream: держатель отказал: $_lastDenyReason');
+          _completeAttempt(false);
+          return;
+        }
+        state = WbstreamError(message.isEmpty ? 'неизвестная ошибка relay' : message);
         _completeAttempt(false);
       case 'stopped':
         if (state is WbstreamStarting || state is WbstreamConnecting) {

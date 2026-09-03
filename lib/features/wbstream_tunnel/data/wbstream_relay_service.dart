@@ -25,7 +25,13 @@ class WbstreamRelayService with InfraLogger {
   /// natively; tunnel progress arrives over [watchStatus]. The conference
   /// display name is picked at random from a fixed pool on every start
   /// (same neutral-name pool as the Telemost mode).
-  Future<WbstreamSocks> start(WbstreamSettings settings) async {
+  /// [tmSecret] — секрет Телемоста аккаунта (hex). Пусто = подключение без
+  /// авторизации: пока держатели не переведены в strict, это рабочий путь.
+  ///
+  /// Режим клиента всегда soft: рукопожатие он проходит целиком и ключ
+  /// переключает, но своих кадров не гейтит. Так одна и та же сборка работает
+  /// и со старым держателем, и со strict — гейт всё равно стоит на держателе.
+  Future<WbstreamSocks> start(WbstreamSettings settings, {String? tmSecret}) async {
     final res = await _channel.invokeMethod<Map<dynamic, dynamic>>('start', {
       'roomId': settings.roomId,
       'displayName': randomTelemostDisplayName(),
@@ -33,6 +39,10 @@ class WbstreamRelayService with InfraLogger {
       'vp8Batch': settings.vp8Batch,
       'dualTrack': settings.dualTrack,
       'reliable': settings.reliable,
+      if (tmSecret != null && tmSecret.isNotEmpty) ...{
+        'tmSecret': tmSecret,
+        'authMode': 'soft',
+      },
     });
     if (res == null) throw Exception('wbstream start: empty response');
     return WbstreamSocks.fromMap(res);

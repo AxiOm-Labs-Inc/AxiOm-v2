@@ -13,7 +13,8 @@ import org.json.JSONObject
  * `com.hiddify.app/wbstream.status` for the WB Stream tunnel mode
  * (features/wbstream_tunnel on the Dart side).
  *
- * start(roomId, displayName, vp8Fps, vp8Batch, dualTrack, reliable)
+ * start(roomId, displayName, vp8Fps, vp8Batch, dualTrack, reliable,
+ *       tmSecret?, authMode?)
  *   → starts librelay.so and returns the local SOCKS5 endpoint as
  *     {host, port, user, pass} (generated per start).
  * stop() → stops the relay process.
@@ -76,6 +77,10 @@ class WBStreamMethodHandler : FlutterPlugin, MethodChannel.MethodCallHandler {
                     put("vp8Batch", (args["vp8Batch"] as? Number)?.toInt() ?: 8)
                     put("dualTrack", args["dualTrack"] as? Boolean ?: false)
                     put("reliable", args["reliable"] as? Boolean ?: false)
+                    // Секрет Телемоста и режим авторизации. Отсутствуют —
+                    // relay ведёт себя как раньше, без рукопожатия.
+                    (args["tmSecret"] as? String)?.let { put("tmSecret", it) }
+                    (args["authMode"] as? String)?.let { put("authMode", it) }
                 }.toString()
                 try {
                     val socks = controller!!.start(joinJson)

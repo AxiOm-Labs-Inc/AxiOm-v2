@@ -90,6 +90,33 @@ class AccountApi with InfraLogger {
     }
   }
 
+  // ── GET /api/app/telemost/credentials ──────────────────────────────────
+
+  /// Fetches this account's Telemost secret. The secret proves membership to
+  /// the room holder without ever leaving the device in the clear: the
+  /// handshake sends a per-connection HMAC, never the secret itself.
+  ///
+  /// Returns null when the account is not entitled (403) or when the server
+  /// cannot confirm the subscription right now (503) — in both cases the
+  /// caller keeps whatever it already has and simply does not refresh.
+  /// Throws [AccountUnauthorizedException] on 401 (dead session).
+  Future<Map<String, dynamic>?> getTelemostCredentials(String sessionToken) async {
+    try {
+      final res = await httpClient.get(
+        '$baseUrl/api/app/telemost/credentials',
+        extraHeaders: {'Authorization': 'Bearer $sessionToken'},
+      );
+      return _decode(res.data, '/telemost/credentials');
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 401) {
+        throw const AccountUnauthorizedException('/telemost/credentials');
+      }
+      if (code == 403 || code == 503 || code == 429) return null;
+      rethrow;
+    }
+  }
+
   // ── GET /api/app/tariffs ───────────────────────────────────────────────
 
   /// Tariff catalogue for the purchase sheet.
