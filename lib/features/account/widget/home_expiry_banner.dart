@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:hiddify/core/model/app_colors.dart';
-import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
+import 'package:hiddify/features/account/widget/purchase_options_sheet.dart';
 import 'package:hiddify/features/profile/data/profile_parser.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
-import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Session-only dismissal of the expiry banner: hidden until the app restarts
@@ -16,8 +15,14 @@ final expiryBannerDismissedProvider = StateProvider<bool>((ref) => false);
 /// Warning banner on the home page shown when the nearest subscription is
 /// about to expire (≤ 3 days) or has already expired. Considers both the
 /// Telegram-account subscriptions and any remote profile in the profile list
-/// (via its `subscription-userinfo` expiry). Tapping opens the sales bot;
-/// the close button hides it for the current session only.
+/// (via its `subscription-userinfo` expiry).
+///
+/// Tapping offers all three ways to pay — in the app, on the site, in the
+/// sales bot — instead of picking one: the routes are not interchangeable
+/// (promo codes live on the site, purchase history in the bot), and the old
+/// split by expiry state was invisible to the user.
+///
+/// The close button hides it for the current session only.
 class HomeExpiryBanner extends HookConsumerWidget {
   const HomeExpiryBanner({super.key});
 
@@ -92,7 +97,7 @@ class HomeExpiryBanner extends HookConsumerWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => UriUtils.tryLaunch(Uri.parse(Constants.telegramBuyBotUrl)),
+          onTap: () => showPurchaseOptions(context),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(

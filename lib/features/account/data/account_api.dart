@@ -70,7 +70,7 @@ class AccountApi with InfraLogger {
       return _decode(res.data, '/me');
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
-        throw AccountUnauthorizedException('/me');
+        throw const AccountUnauthorizedException('/me');
       }
       rethrow;
     }
@@ -88,6 +88,63 @@ class AccountApi with InfraLogger {
     } catch (e) {
       loggy.warning('logout request failed (ignoring): $e');
     }
+  }
+
+  // ── GET /api/app/tariffs ───────────────────────────────────────────────
+
+  /// Tariff catalogue for the purchase sheet.
+  ///
+  /// Served by the backend rather than hardcoded: prices and plans change, and
+  /// a shipped build cannot be updated for everyone at once — a hardcoded price
+  /// would disagree with what is actually charged.
+  Future<Map<String, dynamic>> getTariffs() async {
+    final res = await httpClient.get('$baseUrl/api/app/tariffs');
+    return _decode(res.data, '/tariffs');
+  }
+
+  // ── POST /api/app/payment ──────────────────────────────────────────────
+
+  /// Creates a payment. Returns {payment_id, payment_url}, or
+  /// {status: "succeeded", sub_url} when a 100% discount makes it free.
+  ///
+  /// [sessionToken] is optional: the expiry banner is also shown to users who
+  /// never connected a Telegram account. With a token the purchase is bound to
+  /// the account, without one the response carries a claim_url to bind later.
+  Future<Map<String, dynamic>> createPayment({
+    required int tariffIdx,
+    String? method,
+    String? promo,
+    String? sessionToken,
+  }) async {
+    final res = await httpClient.post(
+      '$baseUrl/api/app/payment',
+      data: jsonEncode({
+        'tariff_idx': tariffIdx,
+        if (method != null) 'method': method,
+        if (promo != null && promo.isNotEmpty) 'promo': promo,
+      }),
+      extraHeaders: {
+        'Content-Type': 'application/json',
+        if (sessionToken != null) 'Authorization': 'Bearer $sessionToken',
+      },
+    );
+    return _decode(res.data, '/payment');
+  }
+
+  // ── GET /api/app/payment/status ────────────────────────────────────────
+
+  /// Polls a payment. Status is one of pending | succeeded | canceled | not_found.
+  Future<Map<String, dynamic>> getPaymentStatus(
+    String paymentId, {
+    String? sessionToken,
+  }) async {
+    final res = await httpClient.get(
+      '$baseUrl/api/app/payment/status?pid=${Uri.encodeQueryComponent(paymentId)}',
+      extraHeaders: {
+        if (sessionToken != null) 'Authorization': 'Bearer $sessionToken',
+      },
+    );
+    return _decode(res.data, '/payment/status');
   }
 
   // ── helpers ────────────────────────────────────────────────────────────

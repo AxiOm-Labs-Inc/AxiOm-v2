@@ -28,6 +28,7 @@
     <application
         android:name=".Application"
         android:banner="@mipmap/ic_banner"
+        android:extractNativeLibs="true"
         android:icon="@mipmap/ic_launcher"
         android:label="AxiOm"
         android:roundIcon="@mipmap/ic_launcher_round"
