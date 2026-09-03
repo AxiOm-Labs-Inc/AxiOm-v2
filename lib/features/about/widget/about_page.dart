@@ -1,6 +1,7 @@
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:hiddify/core/app_info/app_info_provider.dart';
 import 'package:hiddify/core/directories/directories_provider.dart';
@@ -12,6 +13,7 @@ import 'package:hiddify/core/widget/adaptive_icon.dart';
 import 'package:hiddify/core/widget/axiom_branding.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_state.dart';
+import 'package:hiddify/features/telemost_tunnel/notifier/whitepass_notifier.dart';
 import 'package:hiddify/gen/assets.gen.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -62,9 +64,32 @@ class AboutPage extends HookConsumerWidget {
         ),
     ];
 
+    // Easter egg: 10 quick taps on the title open the WhitePass code dialog.
+    final titleTapCount = useState(0);
+    final lastTitleTapAt = useRef<DateTime?>(null);
+
+    void onTitleTap() {
+      final now = DateTime.now();
+      final last = lastTitleTapAt.value;
+      lastTitleTapAt.value = now;
+      if (last == null || now.difference(last) > const Duration(seconds: 2)) {
+        titleTapCount.value = 1;
+      } else {
+        titleTapCount.value += 1;
+      }
+      if (titleTapCount.value >= 10) {
+        titleTapCount.value = 0;
+        _showWhitePassDialog(context, ref);
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: AxiOmSectionTitle(title: t.pages.about.title),
+        title: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTitleTap,
+          child: AxiOmSectionTitle(title: t.pages.about.title),
+        ),
         actions: [
           PopupMenuButton(
             icon: Icon(AdaptiveIcon(context).more),
@@ -145,4 +170,45 @@ class AboutPage extends HookConsumerWidget {
       ),
     );
   }
+}
+
+/// WhitePass cheat-code dialog (opened by the 10-tap title easter egg).
+void _showWhitePassDialog(BuildContext context, WidgetRef ref) {
+  final controller = TextEditingController();
+
+  Future<void> submit(BuildContext dialogContext) async {
+    final ok = await ref.read(whitePassNotifierProvider.notifier).tryUnlock(controller.text);
+    if (!dialogContext.mounted) return;
+    if (ok) {
+      Navigator.of(dialogContext).pop();
+      if (context.mounted) {
+        CustomToast.success('Доступ к обходу открыт на 2 часа').show(context);
+      }
+    } else {
+      CustomToast.error('Неверный код').show(dialogContext);
+    }
+  }
+
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Код доступа'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(hintText: 'Введите код'),
+        onSubmitted: (_) => submit(dialogContext),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Отмена'),
+        ),
+        FilledButton(
+          onPressed: () => submit(dialogContext),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
 }

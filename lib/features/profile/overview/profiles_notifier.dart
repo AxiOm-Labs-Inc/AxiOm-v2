@@ -10,6 +10,7 @@ import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/data/profile_repository.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/model/profile_sort_enum.dart';
+import 'package:hiddify/features/telemost_tunnel/data/telemost_config_service.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -33,7 +34,28 @@ class ProfilesNotifier extends _$ProfilesNotifier with AppLogger {
   @override
   Stream<List<ProfileEntity>> build() {
     final sort = ref.watch(profilesSortNotifierProvider);
-    return _profilesRepo.watchAll(sort: sort.by, sortMode: sort.mode).map((event) => event.getOrElse((l) => throw l));
+    return _profilesRepo.watchAll(sort: sort.by, sortMode: sort.mode).map((event) {
+      final profiles = event.getOrElse((l) => throw l);
+      // Migration: the legacy «AxiOm Telemost» local profile (from before the
+      // tunnel became a separate service) is hidden and wiped — Telemost no
+      // longer uses the profile store. Idempotent; build re-runs on sort
+      // changes and after each deletion.
+      final stale = profiles.where(_isStaleTelemostProfile).toList();
+      if (stale.isNotEmpty) unawaited(_removeStaleTelemostProfiles(stale));
+      return profiles.where((p) => !_isStaleTelemostProfile(p)).toList();
+    });
+  }
+
+  static bool _isStaleTelemostProfile(ProfileEntity p) => p is LocalProfileEntity && p.name == telemostProfileName;
+
+  Future<void> _removeStaleTelemostProfiles(List<ProfileEntity> stale) async {
+    for (final profile in stale) {
+      loggy.info('removing legacy telemost profile [${profile.id}]');
+      if (profile.active) await ref.read(connectionNotifierProvider.notifier).abortConnection();
+      await _profilesRepo.deleteById(profile.id, profile.active).mapLeft((err) {
+        loggy.warning('failed to remove legacy telemost profile', err);
+      }).run();
+    }
   }
 
   ProfileRepository get _profilesRepo => ref.read(profileRepositoryProvider).requireValue;

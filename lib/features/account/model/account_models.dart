@@ -90,6 +90,22 @@ String? _parseExpire(dynamic raw) {
   return null;
 }
 
+// ── API /me feature flags ───────────────────────────────────────────────────
+
+/// Top-level "features" object of GET /api/app/me. Not freezed — a plain
+/// value class is enough for a flat bool map.
+class AccountFeatures {
+  const AccountFeatures({this.telemost = false});
+
+  final bool telemost;
+}
+
+/// Parsed from /api/app/me response JSON; a missing/null object or flag
+/// maps to false (fail-closed).
+AccountFeatures parseFeatures(Map<String, dynamic>? json) {
+  return AccountFeatures(telemost: json?['telemost'] as bool? ?? false);
+}
+
 // ── Session (persisted in secure storage) ───────────────────────────────────
 
 @Freezed()

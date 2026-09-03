@@ -19,7 +19,7 @@ import 'package:hiddify/features/settings/overview/sections/route_options_page.d
 import 'package:hiddify/features/settings/overview/sections/tls_tricks_page.dart';
 import 'package:hiddify/features/settings/overview/sections/warp_options_page.dart';
 import 'package:hiddify/features/settings/overview/settings_page.dart';
-import 'package:hiddify/features/telemost/widget/telemost_placeholder_page.dart';
+import 'package:hiddify/features/telemost_tunnel/widget/telemost_page.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -100,13 +100,13 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
                 ),
               ],
             ),
-            // Branch 1: Telemost (placeholder until feature ships)
+            // Branch 1: Telemost
             StatefulShellBranch(
               routes: <GoRoute>[
                 GoRoute(
                   name: 'telemost',
                   path: '/telemost',
-                  builder: (_, _) => FocusScope(node: branchesScope['telemost'], child: const TelemostPlaceholderPage()),
+                  builder: (_, _) => FocusScope(node: branchesScope['telemost'], child: const TelemostPage()),
                 ),
               ],
             ),

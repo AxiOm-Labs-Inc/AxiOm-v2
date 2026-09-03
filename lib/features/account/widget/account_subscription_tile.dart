@@ -89,6 +89,8 @@ class AccountSubscriptionTile extends HookConsumerWidget {
                   },
                   theme: theme,
                 ),
+                // Active subscriptions are auto-imported on login/refresh; the
+                // button stays as a manual re-add. Inactive ones can't be added.
                 if (sub.status == 'active') ...[
                   const SizedBox(height: 8),
                   _ActionChip(
