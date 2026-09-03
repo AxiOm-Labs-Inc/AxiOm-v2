@@ -1,8 +1,6 @@
 # AxiOm
 
-A customized VPN client built on top of [Hiddify](https://github.com/hiddify/hiddify-app)
-(Flutter + sing-box core). This is a standalone snapshot — it does **not** carry the
-upstream Hiddify git history.
+A multi-platform VPN client (Flutter + sing-box core).
 
 ## Highlights / customizations
 
@@ -18,8 +16,8 @@ upstream Hiddify git history.
 
 ## Build
 
-Standard Flutter project on top of Hiddify. Fetch the native sing-box core libs via the
-Makefile targets (see upstream Hiddify docs), then:
+Standard Flutter project. Fetch the native sing-box core libs via the
+Makefile targets, then:
 
 ```bash
 flutter pub get
@@ -44,8 +42,6 @@ Intentionally git-ignored / externalized:
 
    Without it, the device counter simply stays hidden (everything else works).
 
-## Credits & license
+## License
 
-Based on [Hiddify](https://github.com/hiddify/hiddify-app) and the
-[sing-box](https://github.com/SagerNet/sing-box) core. This project inherits the upstream
-license — see [LICENSE.md](LICENSE.md)
+See [LICENSE.md](LICENSE.md)
