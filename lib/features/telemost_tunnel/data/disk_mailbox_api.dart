@@ -9,17 +9,17 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 /// polls the folder and spawns a creator for each new link — this is the
 /// channel that works under whitelist restrictions (Disk stays reachable).
 ///
-/// The OAuth token is lightly obfuscated (base64) — not security, just so
-/// it does not show up in a plain-text grep. Errors are thrown to the
-/// caller, which decides how fatal they are.
+/// The OAuth token is passed at build time:
+/// `--dart-define=YANDEX_DISK_TOKEN=<token>`. Without it the mailbox is
+/// unavailable and on-demand conference requests fail — everything that does
+/// not need Disk keeps working. Errors are thrown to the caller, which
+/// decides how fatal they are.
 class DiskMailboxApi with InfraLogger {
   static const _timeout = Duration(seconds: 10);
   static const _baseUrl = 'https://cloud-api.yandex.net/v1/disk/resources';
   static const _folderPath = 'app:/wlb/requests';
 
-  static final String _token = utf8.decode(
-    base64Decode('' /* ВЫРЕЗАНО: OAuth-токен Диска, см. SECRETS-LOCAL-ONLY.txt */),
-  );
+  static const _token = String.fromEnvironment('YANDEX_DISK_TOKEN');
 
   Dio _dio() => Dio(
         BaseOptions(

@@ -19,11 +19,14 @@ const telemostProfileName = 'AxiOm Telemost';
 /// exit node is whichever node spawned the creator — no app-side change
 /// needed when the dispatcher routes elsewhere. On FR an OUTPUT DNAT maps
 /// 51821→51822 (port busy with wgfr there).
-/// Single shared peer for the spike — per-user keys come later.
+/// Single shared peer for the spike — per-user keys come later. Both keys are
+/// passed at build time (`--dart-define=TELEMOST_WG_SERVER_PUBKEY=...`,
+/// `--dart-define=TELEMOST_WG_CLIENT_PRIVKEY=...`): a WireGuard private key in
+/// the tree ends up extractable from every shipped APK.
 const _wgServerHost = '10.55.0.1';
 const _wgServerPort = 51821;
-const _wgServerPublicKey = '' /* ВЫРЕЗАНО: см. SECRETS-LOCAL-ONLY.txt */;
-const _wgClientPrivateKey = '' /* ВЫРЕЗАНО: приватный ключ WG */;
+const _wgServerPublicKey = String.fromEnvironment('TELEMOST_WG_SERVER_PUBKEY');
+const _wgClientPrivateKey = String.fromEnvironment('TELEMOST_WG_CLIENT_PRIVKEY');
 const _wgClientAddress = '10.55.0.2/32';
 
 final telemostConfigServiceProvider = Provider<TelemostConfigService>(
