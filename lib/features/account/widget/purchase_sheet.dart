@@ -6,7 +6,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/preferences/preferences_provider.dart';
+import 'package:hiddify/features/account/model/account_models.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
 import 'package:hiddify/features/account/widget/payment_webview_page.dart';
@@ -128,6 +130,12 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     final accountState = ref.watch(accountNotifierProvider);
     final sessionToken = accountState is AccountStateConnected
         ? accountState.session.sessionToken
+        : null;
+    // Лист открывают и для покупки с нуля, и для продления. Во втором случае
+    // «осталось N дней» — единственный контекст, которого здесь не хватало:
+    // без него непонятно, к чему именно прибавится новый срок.
+    final current = accountState is AccountStateConnected
+        ? _longestRunning(accountState.subscriptions)
         : null;
 
     final hasPending = pending.value != null;
@@ -526,6 +534,10 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+            if (current != null) ...[
+              const SizedBox(height: 14),
+              _CurrentSubscriptionStrip(sub: current),
+            ],
             if (hasPending) ...[
               const SizedBox(height: 16),
               _PendingRecoveryCard(
@@ -1010,54 +1022,82 @@ class _Segmented<T> extends StatelessWidget {
             color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Row(
-            children: [
-              for (final o in options)
-                Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: enabled && o.value != value
-                        ? () => onChanged(o.value)
-                        : null,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 140),
-                      height: 36,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: o.value == value ? cs.surface : Colors.transparent,
-                        borderRadius: BorderRadius.circular(9),
+          // Подложка выбранного пункта едет отдельным слоем под подписями:
+          // перекраска фона у каждого пункта по очереди читалась как мигание,
+          // а не как перемещение выбора.
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final selected = options.indexWhere((o) => o.value == value);
+              final slot = constraints.maxWidth / options.length;
+              return SizedBox(
+                height: 36,
+                child: Stack(
+                  children: [
+                    if (selected >= 0)
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 240),
+                        curve: Curves.easeOutCubic,
+                        left: slot * selected,
+                        width: slot,
+                        top: 0,
+                        bottom: 0,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: cs.surface,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                        ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              o.text,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: o.value == value
-                                    ? cs.onSurface
-                                    : cs.onSurfaceVariant,
-                                fontWeight: o.value == value
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
+                    Row(
+                      children: [
+                        for (final o in options)
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: enabled && o.value != value
+                                  ? () => onChanged(o.value)
+                                  : null,
+                              child: Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: AnimatedDefaultTextStyle(
+                                        duration: const Duration(milliseconds: 240),
+                                        curve: Curves.easeOutCubic,
+                                        style: theme.textTheme.labelLarge!.copyWith(
+                                          color: o.value == value
+                                              ? cs.onSurface
+                                              : cs.onSurfaceVariant,
+                                          fontWeight: o.value == value
+                                              ? FontWeight.w600
+                                              : FontWeight.w400,
+                                        ),
+                                        child: Text(
+                                          o.text,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    if (o.hint != null) ...[
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        o.hint!,
+                                        style: theme.textTheme.labelSmall
+                                            ?.copyWith(color: Colors.green.shade600),
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                          if (o.hint != null) ...[
-                            const SizedBox(width: 5),
-                            Text(
-                              o.hint!,
-                              style: theme.textTheme.labelSmall
-                                  ?.copyWith(color: Colors.green.shade600),
-                            ),
-                          ],
-                        ],
-                      ),
+                      ],
                     ),
-                  ),
+                  ],
                 ),
-            ],
+              );
+            },
           ),
         ),
       ],
@@ -1098,6 +1138,8 @@ class _PlanCard extends StatelessWidget {
     final muted = featured ? cs.onSurface : cs.onSurfaceVariant;
     final saving =
         anchor == null ? null : (100 - plan.price * 100 / anchor!).round();
+    final totalLine = '${plan.price} ₽ за ${_termLabel(plan.days)}'
+        '${saving != null && saving > 0 ? ' · экономия $saving%' : ''}';
     final other = cheaper;
     final perDay = other == null
         ? 0
@@ -1143,14 +1185,26 @@ class _PlanCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
-                '${plan.pricePerMonth} ₽',
-                style: (featured
-                        ? theme.textTheme.headlineMedium
-                        : theme.textTheme.headlineSmall)
-                    ?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: featured ? cs.onSurface : cs.onSurfaceVariant,
+              // Цена не подменяется, а докручивается до нового значения:
+              // при смене срока видно, что изменилось именно число, и в какую
+              // сторону. Ключей у карточек нет намеренно — иначе Flutter
+              // пересоздал бы элемент и анимации не случилось бы.
+              TweenAnimationBuilder<double>(
+                tween: Tween<double>(
+                  begin: plan.pricePerMonth.toDouble(),
+                  end: plan.pricePerMonth.toDouble(),
+                ),
+                duration: const Duration(milliseconds: 340),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, _) => Text(
+                  '${value.round()} ₽',
+                  style: (featured
+                          ? theme.textTheme.headlineMedium
+                          : theme.textTheme.headlineSmall)
+                      ?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: featured ? cs.onSurface : cs.onSurfaceVariant,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1162,11 +1216,14 @@ class _PlanCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 2),
-          Text(
-            '${plan.price} ₽ за ${_termLabel(plan.days)}'
-            '${saving != null && saving > 0 ? ' · экономия $saving%' : ''}',
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: cs.onSurfaceVariant),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            child: Text(
+              totalLine,
+              key: ValueKey(totalLine),
+              style: theme.textTheme.labelSmall
+                  ?.copyWith(color: cs.onSurfaceVariant),
+            ),
           ),
           const SizedBox(height: 12),
           _bullet(context, plan.limitLine, muted: muted),
@@ -1298,6 +1355,83 @@ class _ButtonSpinner extends StatelessWidget {
       width: 18,
       height: 18,
       child: CircularProgressIndicator(strokeWidth: 2, color: color),
+    );
+  }
+}
+
+/// Подписка, которая кончится позже остальных: её и продлевают. Тарифов у
+/// одного аккаунта может быть несколько, а строка вверху нужна одна.
+AccountSubscription? _longestRunning(List<AccountSubscription> subs) {
+  AccountSubscription? best;
+  for (final s in subs) {
+    final days = s.daysLeft;
+    if (days == null) continue;
+    if (best == null || days > best.daysLeft!) best = s;
+  }
+  return best;
+}
+
+/// Что у покупателя есть прямо сейчас. Формулировки взяты из тех же ключей,
+/// что и в карточке подписки на экране профилей (`_daysText` там же), чтобы
+/// «Последний день» не превратился в двух местах в разные фразы.
+class _CurrentSubscriptionStrip extends ConsumerWidget {
+  const _CurrentSubscriptionStrip({required this.sub});
+
+  final AccountSubscription sub;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final a = ref.watch(translationsProvider).requireValue.pages.profiles.account;
+    final days = sub.daysLeft!;
+    // Три дня — порог, после которого напоминание перестаёт быть справкой и
+    // становится поводом действовать.
+    final urgent = days <= 3;
+    final fg = urgent ? cs.onErrorContainer : cs.onSurfaceVariant;
+    final text = days < 0
+        ? a.expiredAgo(days: '${-days}')
+        : days == 0
+            ? a.lastDay
+            : days == 1
+                ? a.oneDayLeft
+                : a.daysLeftLabel(days: '$days');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: urgent ? cs.errorContainer : cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            days < 0 ? Icons.error_outline_rounded : Icons.schedule_rounded,
+            size: 18,
+            color: fg,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  sub.tariff.isEmpty ? a.defaultTariff : sub.tariff,
+                  style: theme.textTheme.labelSmall?.copyWith(color: fg),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  text,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: urgent ? cs.onErrorContainer : cs.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
