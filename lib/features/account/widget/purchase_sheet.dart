@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -118,6 +119,11 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     final pollTimer = useRef<Timer?>(null);
     final pollInFlight = useRef(false);
     final promoController = useTextEditingController();
+    // null = «пользователь ещё не выбирал»; подставляем значение по
+    // умолчанию при отрисовке, когда каталог уже загружен.
+    final termDays = useState<int?>(null);
+    final limitKind = useState<_LimitKind?>(null);
+    final promoOpen = useState(false);
 
     final accountState = ref.watch(accountNotifierProvider);
     final sessionToken = accountState is AccountStateConnected
@@ -477,15 +483,40 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       );
     }
 
-    // ── список тарифов (+ recovery незавершённой оплаты) ─────────────────
+    // ── выбор тарифа (+ recovery незавершённой оплаты) ───────────────────
+    //
+    // Каталог приходит с сервера плоским списком (тариф × срок × тип лимита),
+    // как его отдаёт /api/app/tariffs. Раскладываем его обратно в две оси —
+    // срок и вид ограничения — и показываем только те тарифы, что попали в
+    // выбранную ячейку. Плоский список из восьми строк заставлял сравнивать
+    // «Эконом 3 месяца · 210 ГБ/мес» с «Стандарт 1 месяц · 15 устройств», то
+    // есть по двум различиям сразу.
+    final catalog = tariffs.value == null ? null : _Catalog.from(tariffs.value!);
+    // Значение по умолчанию считаем здесь, а не пишем в useState: запись
+    // состояния во время build запрещена, а «не выбрано» и «выбрано то же
+    // самое» для отрисовки неразличимы.
+    final days = termDays.value ??
+        (catalog != null && catalog.terms.isNotEmpty ? catalog.terms.last : 0);
+    final kind = limitKind.value ??
+        (catalog != null && catalog.limits.isNotEmpty
+            ? catalog.limits.first
+            : _LimitKind.devices);
+    final shown = catalog?.select(days, kind) ?? const <_Plan>[];
+    final interactive = !paying.value && !hasPending;
+
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          12,
+          20,
+          24 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Продлить подписку', style: theme.textTheme.titleMedium),
+            Text('Тариф', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(
               sessionToken == null
@@ -506,54 +537,109 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                 onCancel: cancelWaiting,
               ),
             ],
-            if (!hasPending) ...[
-              const SizedBox(height: 16),
-              TextField(
-                controller: promoController,
-                enabled: !paying.value,
-                textInputAction: TextInputAction.done,
-                decoration: InputDecoration(
-                  labelText: 'Промокод',
-                  hintText: 'Если есть — введите до оплаты',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.local_offer_outlined, size: 20),
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             if (loadError.value != null)
               _ErrorRow(text: 'Не удалось загрузить тарифы. ${loadError.value}')
-            else if (tariffs.value == null)
+            else if (catalog == null)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 28),
                 child: Center(child: CircularProgressIndicator()),
               )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: tariffs.value!.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    final t = tariffs.value![i];
-                    final idx = (t['idx'] as num).toInt();
-                    final busy = busyIdx.value == idx;
-                    return _TariffTile(
-                      name: '${t['name']}',
-                      price: '${t['price']} ₽',
-                      telemost: t['telemost'] == true,
-                      busy: busy,
-                      enabled: !paying.value && !hasPending,
-                      onTap: () => buy(idx),
-                    );
-                  },
+            else ...[
+              if (catalog.terms.length > 1) ...[
+                _Segmented<int>(
+                  label: 'Срок',
+                  value: days,
+                  enabled: interactive,
+                  onChanged: (v) => termDays.value = v,
+                  options: [
+                    for (final d in catalog.terms)
+                      (
+                        value: d,
+                        text: _termLabel(d),
+                        hint: catalog.isBestValue(d, kind) ? 'выгоднее' : null,
+                      ),
+                  ],
                 ),
-              ),
+                const SizedBox(height: 14),
+              ],
+              if (catalog.limits.length > 1) ...[
+                _Segmented<_LimitKind>(
+                  label: 'Ограничение — выбираете одно',
+                  value: kind,
+                  enabled: interactive,
+                  onChanged: (v) => limitKind.value = v,
+                  options: [
+                    for (final l in catalog.limits)
+                      (value: l, text: l.label, hint: null),
+                  ],
+                ),
+                const SizedBox(height: 18),
+              ],
+              if (shown.isEmpty)
+                Text(
+                  'Для этого сочетания срока и ограничения тарифа нет.',
+                  style: theme.textTheme.bodySmall,
+                )
+              else
+                for (var i = 0; i < shown.length; i++) ...[
+                  _PlanCard(
+                    plan: shown[i],
+                    // Дороже — выше и с акцентом. Порядок задаёт select().
+                    featured: i == 0 && shown.length > 1,
+                    anchor: catalog.anchorPrice(shown[i]),
+                    cheaper: i == 0 && shown.length > 1 ? shown[1] : null,
+                    telemostElsewhere: catalog.anyTelemost,
+                    busy: busyIdx.value == shown[i].idx,
+                    enabled: interactive,
+                    onTap: () => buy(shown[i].idx),
+                  ),
+                  if (i != shown.length - 1) const SizedBox(height: 12),
+                ],
+            ],
+            if (!hasPending) ...[
+              const SizedBox(height: 14),
+              // Промокод спрятан за ссылкой намеренно: открытое поле «введите
+              // код» отправляет человека искать код на стороне вместо оплаты.
+              if (!promoOpen.value)
+                Center(
+                  child: TextButton.icon(
+                    onPressed: paying.value ? null : () => promoOpen.value = true,
+                    icon: const Icon(Icons.local_offer_outlined, size: 18),
+                    label: const Text('У меня есть промокод'),
+                  ),
+                )
+              else
+                TextField(
+                  controller: promoController,
+                  enabled: !paying.value,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    labelText: 'Промокод',
+                    hintText: 'Введите до оплаты',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.local_offer_outlined, size: 20),
+                  ),
+                ),
+            ],
             if (payError.value != null) ...[
               const SizedBox(height: 12),
               _ErrorRow(text: payError.value!),
             ],
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: Text(
+                'Оплата картой или через СБП · подписка активируется сразу\n'
+                'Автосписаний нет — продление только вручную',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -684,71 +770,6 @@ String _describeError(Object e) {
   return '$e';
 }
 
-class _TariffTile extends StatelessWidget {
-  const _TariffTile({
-    required this.name,
-    required this.price,
-    required this.telemost,
-    required this.busy,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final String name;
-  final String price;
-  final bool telemost;
-  final bool busy;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surfaceContainer,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(name, style: theme.textTheme.labelLarge),
-                    if (telemost) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        'с доступом к Telemost',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              if (busy)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                Text(price, style: theme.textTheme.titleSmall),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ErrorRow extends StatelessWidget {
   const _ErrorRow({required this.text});
   final String text;
@@ -768,6 +789,515 @@ class _ErrorRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Вид ограничения. Тарифы продаются парами: либо лимит по устройствам с
+/// безлимитным трафиком, либо лимит по трафику без счёта устройств.
+enum _LimitKind {
+  devices('По устройствам'),
+  traffic('По трафику');
+
+  const _LimitKind(this.label);
+  final String label;
+}
+
+class _Feature {
+  const _Feature(this.text, {this.sub = false});
+  final String text;
+
+  /// Вложенный пункт («• XHTTP + TLS …» под «4 способа подключения»).
+  final bool sub;
+}
+
+/// Один тариф каталога, разобранный на оси, по которым его выбирают.
+class _Plan {
+  const _Plan({
+    required this.idx,
+    required this.tier,
+    required this.days,
+    required this.gb,
+    required this.ipLimit,
+    required this.price,
+    required this.telemost,
+    required this.rawFeatures,
+  });
+
+  factory _Plan.fromJson(Map<String, dynamic> j) {
+    final name = '${j['name'] ?? ''}';
+    // Имя приходит как «Стандарт — 3 месяца · 15 устройств»: до тире — линейка,
+    // после — то, что мы и так знаем из days/ip_limit/gb. Берём только линейку;
+    // если тире вдруг не окажется, показываем имя целиком, а не пустую строку.
+    final dash = name.indexOf('—');
+    final tier = dash > 0 ? name.substring(0, dash).trim() : name.trim();
+    return _Plan(
+      idx: (j['idx'] as num?)?.toInt() ?? 0,
+      tier: tier.isEmpty ? name : tier,
+      days: (j['days'] as num?)?.toInt() ?? 0,
+      gb: (j['gb'] as num?)?.toInt() ?? 0,
+      ipLimit: (j['ip_limit'] as num?)?.toInt() ?? 0,
+      price: (j['price'] as num?)?.toInt() ?? 0,
+      telemost: j['telemost'] == true,
+      rawFeatures: (j['features'] as List? ?? const [])
+          .map((e) => '$e')
+          .toList(growable: false),
+    );
+  }
+
+  final int idx;
+  final String tier;
+  final int days;
+  final int gb;
+  final int ipLimit;
+  final int price;
+  final bool telemost;
+  final List<String> rawFeatures;
+
+  int get months => math.max(1, (days / 30).round());
+
+  int get pricePerMonth => (price / months).round();
+
+  _LimitKind get limit =>
+      ipLimit > 0 ? _LimitKind.devices : _LimitKind.traffic;
+
+  /// Строка ограничения — считаем сами, а не берём из features: она же
+  /// определяет, в какую колонку переключателя попал тариф, и расходиться
+  /// с ней нельзя.
+  String get limitLine {
+    if (limit == _LimitKind.devices) {
+      final tail = gb > 0 ? '$gb ГБ' : 'трафик безлимитный';
+      return 'До $ipLimit ${_plural(ipLimit, 'устройства', 'устройств', 'устройств')}, $tail';
+    }
+    final perMonth = months > 1 ? (gb / months).round() : gb;
+    final suffix = months > 1 ? ' в месяц' : '';
+    return '$perMonth ГБ$suffix, устройства без ограничений';
+  }
+
+  /// Маркеры пунктов, которые дублируют то, что карточка уже посчитала:
+  /// трафик, устройства и цену за месяц. Если в конфиге поменяют эмодзи,
+  /// худшее, что случится, — строка покажется дважды.
+  static const _computedMarks = ['♾', '📊', '📱', '💰'];
+
+  List<_Feature> get features {
+    final out = <_Feature>[];
+    for (final raw in rawFeatures) {
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+      if (_computedMarks.any(t.startsWith)) continue;
+      final sub = t.startsWith('•');
+      final text = t.replaceFirst(RegExp('^[^0-9A-Za-zА-Яа-яЁё]+'), '').trim();
+      if (text.isEmpty) continue;
+      out.add(_Feature(text, sub: sub));
+    }
+    return out;
+  }
+}
+
+/// Плоский каталог с сервера, разложенный по осям «срок × вид ограничения».
+class _Catalog {
+  const _Catalog(this.plans);
+
+  factory _Catalog.from(List<Map<String, dynamic>> raw) =>
+      _Catalog(raw.map(_Plan.fromJson).toList());
+
+  final List<_Plan> plans;
+
+  List<int> get terms {
+    final list = plans.map((p) => p.days).toSet().toList()..sort();
+    return list;
+  }
+
+  List<_LimitKind> get limits {
+    final list = plans.map((p) => p.limit).toSet().toList()
+      ..sort((a, b) => a.index.compareTo(b.index));
+    return list;
+  }
+
+  bool get anyTelemost => plans.any((p) => p.telemost);
+
+  /// Тарифы выбранной ячейки, дороже — первым: верхняя карточка задаёт точку
+  /// отсчёта, с которой сравнивают остальные.
+  List<_Plan> select(int days, _LimitKind kind) {
+    final list =
+        plans.where((p) => p.days == days && p.limit == kind).toList()
+          ..sort((a, b) => b.price.compareTo(a.price));
+    return list;
+  }
+
+  /// Сколько стоил бы тот же срок помесячными платежами. Не выдуманная «старая
+  /// цена», а реальная сумма из этого же каталога — её и зачёркиваем.
+  int? anchorPrice(_Plan plan) {
+    final same = plans
+        .where((p) => p.tier == plan.tier && p.limit == plan.limit)
+        .toList()
+      ..sort((a, b) => a.days.compareTo(b.days));
+    if (same.isEmpty) return null;
+    final shortest = same.first;
+    if (shortest.days >= plan.days) return null;
+    final anchor = shortest.pricePerMonth * plan.months;
+    return anchor > plan.price ? anchor : null;
+  }
+
+  /// Срок с самой низкой ценой за месяц — на нём и стоит пометка «выгоднее».
+  bool isBestValue(int days, _LimitKind kind) {
+    if (terms.length < 2) return false;
+    int? best;
+    var bestDays = -1;
+    for (final d in terms) {
+      final list = select(d, kind);
+      if (list.isEmpty) continue;
+      final cheapest = list.map((p) => p.pricePerMonth).reduce(math.min);
+      if (best == null || cheapest < best) {
+        best = cheapest;
+        bestDays = d;
+      }
+    }
+    return bestDays == days;
+  }
+}
+
+String _plural(int n, String one, String few, String many) {
+  final m10 = n % 10;
+  final m100 = n % 100;
+  if (m10 == 1 && m100 != 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+String _termLabel(int days) {
+  if (days > 0 && days % 30 == 0) {
+    final m = days ~/ 30;
+    return '$m ${_plural(m, 'месяц', 'месяца', 'месяцев')}';
+  }
+  return '$days ${_plural(days, 'день', 'дня', 'дней')}';
+}
+
+typedef _SegOption<T> = ({T value, String text, String? hint});
+
+/// Переключатель-сегмент. SegmentedButton из Material не подошёл: он тянет
+/// галочку выбранного пункта и не даёт положить рядом с подписью пометку.
+class _Segmented<T> extends StatelessWidget {
+  const _Segmented({
+    required this.label,
+    required this.options,
+    required this.value,
+    required this.onChanged,
+    required this.enabled,
+  });
+
+  final String label;
+  final List<_SegOption<T>> options;
+  final T value;
+  final ValueChanged<T> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              for (final o in options)
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: enabled && o.value != value
+                        ? () => onChanged(o.value)
+                        : null,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 140),
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: o.value == value ? cs.surface : Colors.transparent,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              o.text,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: o.value == value
+                                    ? cs.onSurface
+                                    : cs.onSurfaceVariant,
+                                fontWeight: o.value == value
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                          if (o.hint != null) ...[
+                            const SizedBox(width: 5),
+                            Text(
+                              o.hint!,
+                              style: theme.textTheme.labelSmall
+                                  ?.copyWith(color: Colors.green.shade600),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Карточка тарифа. Дорогой вариант получает рамку, крупную цену и заливную
+/// кнопку, дешёвый — приглушённый вид: разница в весе и есть подсказка, что
+/// именно мы предлагаем.
+class _PlanCard extends StatelessWidget {
+  const _PlanCard({
+    required this.plan,
+    required this.featured,
+    required this.anchor,
+    required this.cheaper,
+    required this.telemostElsewhere,
+    required this.busy,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final _Plan plan;
+  final bool featured;
+  final int? anchor;
+
+  /// Соседний тариф подешевле — нужен, чтобы показать разницу в день.
+  final _Plan? cheaper;
+  final bool telemostElsewhere;
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final muted = featured ? cs.onSurface : cs.onSurfaceVariant;
+    final saving =
+        anchor == null ? null : (100 - plan.price * 100 / anchor!).round();
+    final other = cheaper;
+    final perDay = other == null
+        ? 0
+        : ((plan.pricePerMonth - other.pricePerMonth) / 30).round();
+
+    final card = Container(
+      padding: EdgeInsets.fromLTRB(14, featured ? 16 : 14, 14, 14),
+      decoration: BoxDecoration(
+        color: featured ? cs.surface : cs.surfaceContainerLow,
+        border: Border.all(
+          color: featured ? cs.primary : cs.outlineVariant,
+          width: featured ? 2 : 1,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  plan.tier,
+                  style: featured
+                      ? theme.textTheme.titleMedium
+                      : theme.textTheme.titleSmall
+                          ?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ),
+              if (anchor != null)
+                Text(
+                  '$anchor ₽',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '${plan.pricePerMonth} ₽',
+                style: (featured
+                        ? theme.textTheme.headlineMedium
+                        : theme.textTheme.headlineSmall)
+                    ?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: featured ? cs.onSurface : cs.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'в месяц',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${plan.price} ₽ за ${_termLabel(plan.days)}'
+            '${saving != null && saving > 0 ? ' · экономия $saving%' : ''}',
+            style: theme.textTheme.labelSmall
+                ?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          _bullet(context, plan.limitLine, muted: muted),
+          for (final f in plan.features)
+            _bullet(context, f.text, muted: muted, sub: f.sub),
+          if (plan.telemost)
+            _bullet(context, 'Доступ в Telemost', muted: muted)
+          else if (telemostElsewhere)
+            _bullet(context, 'Без Telemost', muted: cs.onSurfaceVariant, absent: true),
+          if (featured && other != null && perDay >= 1)
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.trending_up_rounded,
+                      size: 16, color: cs.onPrimaryContainer),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Это +$perDay ₽ в день к «${other.tier}»',
+                      style: theme.textTheme.labelMedium
+                          ?.copyWith(color: cs.onPrimaryContainer),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: featured ? 46 : 42,
+            child: featured
+                ? FilledButton(
+                    onPressed: enabled && !busy ? onTap : null,
+                    child: busy
+                        ? _ButtonSpinner(color: cs.onPrimary)
+                        : Text('Оплатить ${plan.price} ₽'),
+                  )
+                : OutlinedButton(
+                    onPressed: enabled && !busy ? onTap : null,
+                    child: busy
+                        ? _ButtonSpinner(color: cs.primary)
+                        : Text('Взять «${plan.tier}» за ${plan.price} ₽'),
+                  ),
+          ),
+        ],
+      ),
+    );
+
+    if (!featured) return card;
+    // Ярлык висит на границе карточки, поэтому Stack без обрезки, а отступ
+    // сверху отдан родителю — иначе половину ярлыка съест предыдущий элемент.
+    return Padding(
+      padding: const EdgeInsets.only(top: 11),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          card,
+          Positioned(
+            top: -11,
+            left: 14,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: cs.primary,
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Text(
+                'Рекомендуем',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: cs.onPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bullet(
+    BuildContext context,
+    String text, {
+    required Color muted,
+    bool sub = false,
+    bool absent = false,
+  }) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return Padding(
+      padding: EdgeInsets.only(left: sub ? 22 : 0, bottom: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            absent ? Icons.remove_rounded : Icons.check_rounded,
+            size: 16,
+            color: absent
+                ? cs.onSurfaceVariant
+                : (featured ? Colors.green.shade600 : cs.onSurfaceVariant),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ButtonSpinner extends StatelessWidget {
+  const _ButtonSpinner({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 18,
+      height: 18,
+      child: CircularProgressIndicator(strokeWidth: 2, color: color),
     );
   }
 }
