@@ -13,8 +13,6 @@ import 'package:hiddify/features/connection/model/core_owner.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
-import 'package:hiddify/features/telemost_tunnel/model/telemost_settings.dart';
-import 'package:hiddify/features/telemost_tunnel/notifier/telemost_tunnel_notifier.dart';
 import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
 import 'package:hiddify/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:hiddify/hiddifycore/init_signal.dart';
@@ -104,7 +102,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     // it. An explicit VPN connect goes through _connectThrottled, which
     // handles the exclusion itself.
     final owner = ref.read(coreOwnerProvider);
-    if (owner == CoreOwner.telemost || owner == CoreOwner.wbstream) return;
+    if (owner == CoreOwner.wbstream) return;
     if (state case AsyncData(:final value) when value == const Connected()) {
       if (profile == null) {
         loggy.info("no active profile, disconnecting");
@@ -148,12 +146,8 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> _connectThrottled() async {
-    // Mutual exclusion: a running tunnel (Telemost or WBStream) is silently
-    // torn down first (its deactivate stops the tunnel-owned core too).
-    if (ref.read(telemostTunnelNotifierProvider) is! TelemostIdle) {
-      loggy.info("telemost tunnel active, deactivating before VPN connect");
-      await ref.read(telemostTunnelNotifierProvider.notifier).deactivate();
-    }
+    // Mutual exclusion: a running WBStream tunnel is silently torn down first
+    // (its deactivate stops the tunnel-owned core too).
     if (ref.read(wbstreamTunnelNotifierProvider) is! WbstreamIdle) {
       loggy.info("wbstream tunnel active, deactivating before VPN connect");
       await ref.read(wbstreamTunnelNotifierProvider.notifier).deactivate();
@@ -229,7 +223,7 @@ Future<bool> serviceRunning(Ref ref) async {
 final vpnConnectionStatusProvider = Provider<AsyncValue<ConnectionStatus>>((ref) {
   final status = ref.watch(connectionNotifierProvider);
   final owner = ref.watch(coreOwnerProvider);
-  if (owner == CoreOwner.telemost || owner == CoreOwner.wbstream) {
+  if (owner == CoreOwner.wbstream) {
     return const AsyncData(Disconnected());
   }
   return status;

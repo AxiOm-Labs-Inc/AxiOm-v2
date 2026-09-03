@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:hiddify/features/telemost_tunnel/model/telemost_names.dart';
+import 'package:hiddify/features/wbstream_tunnel/model/display_names.dart';
 import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';

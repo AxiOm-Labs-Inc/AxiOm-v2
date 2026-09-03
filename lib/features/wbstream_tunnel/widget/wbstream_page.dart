@@ -12,8 +12,6 @@ import 'package:hiddify/features/account/notifier/account_notifier.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/model/core_owner.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
-import 'package:hiddify/features/telemost_tunnel/model/telemost_settings.dart';
-import 'package:hiddify/features/telemost_tunnel/notifier/telemost_tunnel_notifier.dart';
 import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
 import 'package:hiddify/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:hiddify/features/wbstream_tunnel/widget/wbstream_connect_button.dart';
@@ -97,10 +95,6 @@ class WbstreamPage extends HookConsumerWidget with PresLogger {
       busyTunnel.value = true;
       try {
         await ref.read(connectionNotifierProvider.notifier).abortConnection();
-        // Mutual exclusion with the Telemost tunnel (same single core slot).
-        if (ref.read(telemostTunnelNotifierProvider) is! TelemostIdle) {
-          await ref.read(telemostTunnelNotifierProvider.notifier).deactivate();
-        }
         if (!await notifier.ensureConnected()) {
           final err = ref.read(wbstreamTunnelNotifierProvider);
           toastError(err is WbstreamError ? err.message : 'Туннель не поднялся');

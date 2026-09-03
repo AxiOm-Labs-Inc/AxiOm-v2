@@ -13,7 +13,7 @@ import 'package:hiddify/core/widget/adaptive_icon.dart';
 import 'package:hiddify/core/widget/axiom_branding.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_state.dart';
-import 'package:hiddify/features/telemost_tunnel/notifier/whitepass_notifier.dart';
+import 'package:hiddify/features/account/notifier/whitepass_notifier.dart';
 import 'package:hiddify/gen/assets.gen.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';

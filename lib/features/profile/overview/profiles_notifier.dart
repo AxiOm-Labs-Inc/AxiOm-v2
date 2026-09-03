@@ -10,7 +10,6 @@ import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/data/profile_repository.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/model/profile_sort_enum.dart';
-import 'package:hiddify/features/telemost_tunnel/data/telemost_config_service.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -45,6 +44,10 @@ class ProfilesNotifier extends _$ProfilesNotifier with AppLogger {
       return profiles.where((p) => !_isStaleTelemostProfile(p)).toList();
     });
   }
+
+  /// Имя легаси-профиля Телемоста: раньше константа жила в удалённом
+  /// telemost_config_service, но нужна она только здесь — для чистки.
+  static const telemostProfileName = 'AxiOm Telemost';
 
   static bool _isStaleTelemostProfile(ProfileEntity p) => p is LocalProfileEntity && p.name == telemostProfileName;
 
