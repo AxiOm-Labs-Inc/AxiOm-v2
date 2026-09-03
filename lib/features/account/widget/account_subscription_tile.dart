@@ -3,13 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/model/app_colors.dart';
 import 'package:hiddify/features/account/model/account_models.dart';
+import 'package:hiddify/features/account/widget/purchase_options_sheet.dart';
 import 'package:hiddify/features/profile/notifier/profile_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Tile for a single subscription in the Personal Account section.
+/// Tile for a single subscription in the Personal Account section on Profiles.
 ///
-/// Shows tariff name, status, traffic/days meters (reusing _DualMeterRow style),
-/// and actions: copy link, add to profiles.
+/// Shows tariff, status, traffic/days, and actions: renew, copy link, add profile.
 class AccountSubscriptionTile extends HookConsumerWidget {
   const AccountSubscriptionTile({super.key, required this.subscription});
 
@@ -20,6 +20,7 @@ class AccountSubscriptionTile extends HookConsumerWidget {
     final theme = Theme.of(context);
     final a = ref.watch(translationsProvider).requireValue.pages.profiles.account;
     final sub = subscription;
+    final days = sub.daysLeft;
 
     return Card(
       elevation: 0,
@@ -30,7 +31,6 @@ class AccountSubscriptionTile extends HookConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Tariff name + status badge
             Row(
               children: [
                 Expanded(
@@ -47,7 +47,11 @@ class AccountSubscriptionTile extends HookConsumerWidget {
             ),
             const SizedBox(height: 10),
 
-            // Traffic / days meters
+            if (days != null) ...[
+              _DaysRow(daysLeft: days, theme: theme),
+              const SizedBox(height: 8),
+            ],
+
             if (sub.dataLimit > 0) ...[
               _SimpleMeter(
                 label: a.trafficLabel,
@@ -62,7 +66,15 @@ class AccountSubscriptionTile extends HookConsumerWidget {
               _ExpireRow(expire: sub.expire!, daysLeft: sub.daysLeft, theme: theme, label: a.expiresLabel),
 
             const SizedBox(height: 12),
-            // Action buttons
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: () => showPurchaseOptions(context),
+                icon: const Icon(Icons.shopping_cart_outlined, size: 18),
+                label: const Text('Продлить'),
+              ),
+            ),
+            const SizedBox(height: 8),
             Column(
               children: [
                 _ActionChip(
@@ -76,8 +88,6 @@ class AccountSubscriptionTile extends HookConsumerWidget {
                   },
                   theme: theme,
                 ),
-                // Active subscriptions are auto-imported on login/refresh; the
-                // button stays as a manual re-add. Inactive ones can't be added.
                 if (sub.status == 'active') ...[
                   const SizedBox(height: 8),
                   _ActionChip(
@@ -102,7 +112,41 @@ class AccountSubscriptionTile extends HookConsumerWidget {
   }
 }
 
-// ── Status badge ────────────────────────────────────────────────────────────
+class _DaysRow extends StatelessWidget {
+  const _DaysRow({required this.daysLeft, required this.theme});
+  final int daysLeft;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final urgent = daysLeft <= 3;
+    final color = daysLeft < 0
+        ? const Color(AppColors.danger)
+        : urgent
+            ? const Color(AppColors.warning)
+            : theme.colorScheme.onSurfaceVariant;
+    final text = daysLeft < 0
+        ? 'Истекла ${-daysLeft} дн. назад'
+        : daysLeft == 0
+            ? 'Последний день'
+            : daysLeft == 1
+                ? 'Остался 1 день'
+                : 'Осталось $daysLeft дн.';
+    return Row(
+      children: [
+        Icon(Icons.timelapse_rounded, size: 14, color: color),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: urgent || daysLeft < 0 ? FontWeight.w600 : null,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({required this.status, required this.theme, required this.activeLabel});
@@ -142,10 +186,6 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
-// ── Simple meter (single bar — traffic or days) ─────────────────────────────
-
-/// Returns a signal color based on traffic ratio:
-/// <0.8 info (blue), 0.8–0.95 warning (amber), >0.95 danger (red).
 Color _trafficColor(double ratio) {
   if (ratio > 0.95) return const Color(AppColors.danger);
   if (ratio >= 0.8) return const Color(AppColors.warning);
@@ -203,8 +243,6 @@ class _SimpleMeter extends StatelessWidget {
   }
 }
 
-// ── Expire date row ─────────────────────────────────────────────────────────
-
 class _ExpireRow extends StatelessWidget {
   const _ExpireRow({required this.expire, required this.daysLeft, required this.theme, required this.label});
   final String expire;
@@ -214,7 +252,6 @@ class _ExpireRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Warn when 3 days or fewer remain (but not yet expired).
     final isUrgent = daysLeft != null && daysLeft! >= 0 && daysLeft! <= 3;
     final color = isUrgent ? const Color(AppColors.warning) : theme.colorScheme.onSurfaceVariant;
     return Row(
@@ -232,8 +269,6 @@ class _ExpireRow extends StatelessWidget {
     );
   }
 }
-
-// ── Action chip ─────────────────────────────────────────────────────────────
 
 class _ActionChip extends StatelessWidget {
   const _ActionChip({

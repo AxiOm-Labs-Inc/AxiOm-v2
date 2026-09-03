@@ -1,28 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/model/app_colors.dart';
+import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
 import 'package:hiddify/features/account/model/account_models.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
 import 'package:hiddify/features/account/widget/account_subscription_tile.dart';
+import 'package:hiddify/features/account/widget/purchase_options_sheet.dart';
 import 'package:hiddify/features/account/widget/purchase_sheet.dart';
+import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// Personal Account section in the Profiles page.
+/// Personal Account / ЛК block on the Profiles tab (not a separate screen).
 ///
-/// Disconnected → card-button to connect.
-/// Connected → account info + subscription list.
-/// Always → «Купить подписку» and an optional pending-payment chip.
+/// Shows tariff / days / traffic for connected subscriptions, plus actions:
+/// renew (purchase options), link Telegram, support. Guests see connect + buy.
 class AccountSection extends HookConsumerWidget {
   const AccountSection({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(accountNotifierProvider);
-    // Провайдер считает срок годности один раз при создании, поэтому суточный
-    // платёж мог протухнуть уже после этого — проверяем на месте, иначе чип
-    // висел бы до перезапуска приложения.
     final storedPending = ref.watch(pendingPaymentProvider);
     final pending = (storedPending != null && !storedPending.isExpired) ? storedPending : null;
     final theme = Theme.of(context);
@@ -31,9 +30,7 @@ class AccountSection extends HookConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (pending != null) ...[
-          _PendingPaymentChip(
-            onTap: () => showPurchaseSheet(context),
-          ),
+          _PendingPaymentChip(onTap: () => showPurchaseSheet(context)),
           const SizedBox(height: 12),
         ],
         switch (state) {
@@ -44,9 +41,24 @@ class AccountSection extends HookConsumerWidget {
         },
         const SizedBox(height: 12),
         FilledButton.tonalIcon(
-          onPressed: () => showPurchaseSheet(context),
-          icon: const Icon(Icons.shopping_cart_outlined, size: 20),
-          label: Text(pending != null ? 'Продолжить оплату' : 'Купить подписку'),
+          onPressed: () {
+            if (pending != null) {
+              showPurchaseSheet(context);
+            } else {
+              showPurchaseOptions(context);
+            }
+          },
+          icon: Icon(
+            pending != null ? Icons.pending_actions_rounded : Icons.shopping_cart_outlined,
+            size: 20,
+          ),
+          label: Text(pending != null ? 'Продолжить оплату' : 'Продлить / купить'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => UriUtils.tryLaunch(Uri.parse(Constants.telegramSupportBotUrl)),
+          icon: const Icon(Icons.support_agent_rounded, size: 20),
+          label: const Text('Поддержка'),
         ),
       ],
     );
@@ -104,56 +116,46 @@ class _DisconnectedView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final a = ref.watch(translationsProvider).requireValue.pages.profiles.account;
     return Card(
       elevation: 0,
       color: theme.colorScheme.surfaceContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => ref.read(bottomSheetsNotifierProvider.notifier).showConnectAccount(),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Color(AppColors.telegram).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.telegram, color: Color(AppColors.telegram), size: 24),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Личный кабинет', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              'Привяжите Telegram, чтобы видеть тариф, дни и трафик. '
+              'Купить подписку можно и без привязки.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      a.title,
-                      style: theme.textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      a.connectDesc,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () =>
+                    ref.read(bottomSheetsNotifierProvider.notifier).showConnectAccount(),
+                icon: const Icon(Icons.telegram, size: 20),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(AppColors.telegram),
+                  foregroundColor: Colors.white,
                 ),
+                label: const Text('Привязать Telegram'),
               ),
-              const Icon(Icons.chevron_right, color: Color(AppColors.telegram)),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-// ── Restoring (session check in progress) ──────────────────────────────────
+// ── Restoring ───────────────────────────────────────────────────────────────
 
 class _RestoringView extends StatelessWidget {
   const _RestoringView({required this.theme});
@@ -218,7 +220,7 @@ class _ConnectedView extends HookConsumerWidget {
                         style: theme.textTheme.titleSmall,
                       ),
                       Text(
-                        a.title,
+                        'Личный кабинет',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -266,6 +268,15 @@ class _ConnectedView extends HookConsumerWidget {
                 a.noSubscriptions,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => showPurchaseOptions(context),
+                  icon: const Icon(Icons.shopping_cart_outlined, size: 18),
+                  label: const Text('Продлить подписку'),
                 ),
               ),
             ],

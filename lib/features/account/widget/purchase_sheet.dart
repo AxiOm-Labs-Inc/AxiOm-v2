@@ -10,6 +10,7 @@ import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
 import 'package:hiddify/features/account/widget/payment_webview_page.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
+import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -116,6 +117,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     final payError = useState<String?>(null);
     final pollTimer = useRef<Timer?>(null);
     final pollInFlight = useRef(false);
+    final promoController = useTextEditingController();
 
     final accountState = ref.watch(accountNotifierProvider);
     final sessionToken = accountState is AccountStateConnected
@@ -127,13 +129,23 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     Future<bool> importSubUrl(String url) async {
       final repo = ref.read(profileRepositoryProvider).valueOrNull;
       if (repo == null) return false;
-      return repo.upsertRemote(url).match(
+      final ok = await repo.upsertRemote(url).match(
         (err) {
           loggy.warning('post-payment profile import failed: $err');
           return false;
         },
         (_) => true,
       ).run();
+      if (!ok) return false;
+      try {
+        final entry = await ref.read(profileDataSourceProvider).getByUrl(url);
+        if (entry != null) {
+          await ref.read(profilesNotifierProvider.notifier).selectActiveProfile(entry.id);
+        }
+      } catch (e) {
+        loggy.warning('mark profile active after purchase failed: $e');
+      }
+      return true;
     }
 
     // Зеркало для Профилей. ref живёт вместе с листом, а сюда можно попасть
@@ -344,8 +356,10 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       pollTimedOut.value = false;
       try {
         final api = ref.read(accountApiProvider);
+        final promo = promoController.text.trim();
         final created = await api.createPayment(
           tariffIdx: idx,
+          promo: promo.isEmpty ? null : promo,
           sessionToken: sessionToken,
         );
 
@@ -475,6 +489,21 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                 onContinue: continuePayment,
                 onCheckAgain: checkAgain,
                 onCancel: cancelWaiting,
+              ),
+            ],
+            if (!hasPending) ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: promoController,
+                enabled: !paying.value,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: 'Промокод',
+                  hintText: 'Если есть — введите до оплаты',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.local_offer_outlined, size: 20),
+                ),
               ),
             ],
             const SizedBox(height: 16),
