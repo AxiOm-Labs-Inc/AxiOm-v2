@@ -397,8 +397,9 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     // ── экран «оплачено» ─────────────────────────────────────────────────
     if (subUrl.value != null) {
       final hint = imported.value
-          ? 'Ссылка на подписку добавлена в профили. Если профиль не появился — '
-              'скопируйте ссылку и добавьте вручную.'
+          ? 'Подписка добавлена в профили и выбрана активной — если VPN был '
+              'включён, соединение переподключилось на неё. Если профиль не '
+              'появился, скопируйте ссылку и добавьте вручную.'
           : 'Скопируйте ссылку и добавьте её в профили вручную.';
       final claim = claimUrl.value;
 
@@ -649,7 +650,15 @@ String _describeError(Object e) {
     if (code == 429) {
       return 'Сервер занят, попробуйте через минуту.';
     }
-    final data = e.response?.data;
+    // Тело приходит то распарсенным, то строкой (см. AccountApi._decode), а в
+    // нём лежит причина отказа — например «Код недействителен или исчерпан»
+    // на промокод. Без разбора строки пользователь увидел бы только номер.
+    var data = e.response?.data;
+    if (data is String) {
+      try {
+        data = jsonDecode(data);
+      } catch (_) {}
+    }
     if (data is Map && data['error'] is String) {
       return data['error'] as String;
     }

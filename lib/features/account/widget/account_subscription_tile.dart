@@ -47,11 +47,6 @@ class AccountSubscriptionTile extends HookConsumerWidget {
             ),
             const SizedBox(height: 10),
 
-            if (days != null) ...[
-              _DaysRow(daysLeft: days, theme: theme),
-              const SizedBox(height: 8),
-            ],
-
             if (sub.dataLimit > 0) ...[
               _SimpleMeter(
                 label: a.trafficLabel,
@@ -63,7 +58,13 @@ class AccountSubscriptionTile extends HookConsumerWidget {
               const SizedBox(height: 6),
             ],
             if (sub.expire != null && sub.expire!.isNotEmpty)
-              _ExpireRow(expire: sub.expire!, daysLeft: sub.daysLeft, theme: theme, label: a.expiresLabel),
+              _ExpireRow(
+                expire: sub.expire!,
+                daysLeft: days,
+                theme: theme,
+                label: a.expiresLabel,
+                daysText: days == null ? null : _daysText(a, days),
+              ),
 
             const SizedBox(height: 12),
             SizedBox(
@@ -71,7 +72,7 @@ class AccountSubscriptionTile extends HookConsumerWidget {
               child: FilledButton.tonalIcon(
                 onPressed: () => showPurchaseOptions(context),
                 icon: const Icon(Icons.shopping_cart_outlined, size: 18),
-                label: const Text('Продлить'),
+                label: Text(a.renew),
               ),
             ),
             const SizedBox(height: 8),
@@ -112,40 +113,14 @@ class AccountSubscriptionTile extends HookConsumerWidget {
   }
 }
 
-class _DaysRow extends StatelessWidget {
-  const _DaysRow({required this.daysLeft, required this.theme});
-  final int daysLeft;
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    final urgent = daysLeft <= 3;
-    final color = daysLeft < 0
-        ? const Color(AppColors.danger)
-        : urgent
-            ? const Color(AppColors.warning)
-            : theme.colorScheme.onSurfaceVariant;
-    final text = daysLeft < 0
-        ? 'Истекла ${-daysLeft} дн. назад'
-        : daysLeft == 0
-            ? 'Последний день'
-            : daysLeft == 1
-                ? 'Остался 1 день'
-                : 'Осталось $daysLeft дн.';
-    return Row(
-      children: [
-        Icon(Icons.timelapse_rounded, size: 14, color: color),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: color,
-            fontWeight: urgent || daysLeft < 0 ? FontWeight.w600 : null,
-          ),
-        ),
-      ],
-    );
-  }
+/// Human-readable remainder for the expiry row. Negative days mean the
+/// subscription is already dead — that case gets its own wording rather than
+/// «0 days left», which reads as still working.
+String _daysText(TranslationsPagesProfilesAccountEn a, int days) {
+  if (days < 0) return a.expiredAgo(days: '${-days}');
+  if (days == 0) return a.lastDay;
+  if (days == 1) return a.oneDayLeft;
+  return a.daysLeftLabel(days: '$days');
 }
 
 class _StatusBadge extends StatelessWidget {
@@ -244,25 +219,42 @@ class _SimpleMeter extends StatelessWidget {
 }
 
 class _ExpireRow extends StatelessWidget {
-  const _ExpireRow({required this.expire, required this.daysLeft, required this.theme, required this.label});
+  const _ExpireRow({
+    required this.expire,
+    required this.daysLeft,
+    required this.theme,
+    required this.label,
+    this.daysText,
+  });
   final String expire;
   final int? daysLeft;
   final ThemeData theme;
   final String label;
+  final String? daysText;
 
   @override
   Widget build(BuildContext context) {
+    final expired = daysLeft != null && daysLeft! < 0;
     final isUrgent = daysLeft != null && daysLeft! >= 0 && daysLeft! <= 3;
-    final color = isUrgent ? const Color(AppColors.warning) : theme.colorScheme.onSurfaceVariant;
+    final color = expired
+        ? const Color(AppColors.danger)
+        : isUrgent
+            ? const Color(AppColors.warning)
+            : theme.colorScheme.onSurfaceVariant;
+    // Дата и остаток дней — одна строка: раздельными они дублировали друг
+    // друга, включая подсветку срочности.
+    final text = daysText == null ? '$label $expire' : '$label $expire · $daysText';
     return Row(
       children: [
         Icon(Icons.calendar_today, size: 12, color: color),
         const SizedBox(width: 6),
-        Text(
-          '$label $expire',
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: color,
-            fontWeight: isUrgent ? FontWeight.w600 : null,
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: isUrgent || expired ? FontWeight.w600 : null,
+            ),
           ),
         ),
       ],

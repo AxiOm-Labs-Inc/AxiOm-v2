@@ -21,6 +21,7 @@ class AccountSection extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final a = ref.watch(translationsProvider).requireValue.pages.profiles.account;
     final state = ref.watch(accountNotifierProvider);
     final storedPending = ref.watch(pendingPaymentProvider);
     final pending = (storedPending != null && !storedPending.isExpired) ? storedPending : null;
@@ -30,7 +31,11 @@ class AccountSection extends HookConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (pending != null) ...[
-          _PendingPaymentChip(onTap: () => showPurchaseSheet(context)),
+          _PendingPaymentChip(
+            title: a.pendingTitle,
+            hint: a.pendingHint,
+            onTap: () => showPurchaseSheet(context),
+          ),
           const SizedBox(height: 12),
         ],
         switch (state) {
@@ -52,13 +57,13 @@ class AccountSection extends HookConsumerWidget {
             pending != null ? Icons.pending_actions_rounded : Icons.shopping_cart_outlined,
             size: 20,
           ),
-          label: Text(pending != null ? 'Продолжить оплату' : 'Продлить / купить'),
+          label: Text(pending != null ? a.continuePayment : a.renewOrBuy),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
           onPressed: () => UriUtils.tryLaunch(Uri.parse(Constants.telegramSupportBotUrl)),
           icon: const Icon(Icons.support_agent_rounded, size: 20),
-          label: const Text('Поддержка'),
+          label: Text(a.support),
         ),
       ],
     );
@@ -66,8 +71,10 @@ class AccountSection extends HookConsumerWidget {
 }
 
 class _PendingPaymentChip extends StatelessWidget {
-  const _PendingPaymentChip({required this.onTap});
+  const _PendingPaymentChip({required this.title, required this.hint, required this.onTap});
 
+  final String title;
+  final String hint;
   final VoidCallback onTap;
 
   @override
@@ -89,9 +96,9 @@ class _PendingPaymentChip extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Есть незавершённая оплата', style: theme.textTheme.labelLarge),
+                    Text(title, style: theme.textTheme.labelLarge),
                     Text(
-                      'Нажмите, чтобы продолжить или отменить',
+                      hint,
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -116,6 +123,7 @@ class _DisconnectedView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final a = ref.watch(translationsProvider).requireValue.pages.profiles.account;
     return Card(
       elevation: 0,
       color: theme.colorScheme.surfaceContainer,
@@ -125,11 +133,10 @@ class _DisconnectedView extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Личный кабинет', style: theme.textTheme.titleSmall),
+            Text(a.title, style: theme.textTheme.titleSmall),
             const SizedBox(height: 4),
             Text(
-              'Привяжите Telegram, чтобы видеть тариф, дни и трафик. '
-              'Купить подписку можно и без привязки.',
+              a.guestHint,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -145,7 +152,7 @@ class _DisconnectedView extends ConsumerWidget {
                   backgroundColor: const Color(AppColors.telegram),
                   foregroundColor: Colors.white,
                 ),
-                label: const Text('Привязать Telegram'),
+                label: Text(a.connectTelegram),
               ),
             ),
           ],
@@ -220,7 +227,7 @@ class _ConnectedView extends HookConsumerWidget {
                         style: theme.textTheme.titleSmall,
                       ),
                       Text(
-                        'Личный кабинет',
+                        a.title,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -268,15 +275,6 @@ class _ConnectedView extends HookConsumerWidget {
                 a.noSubscriptions,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => showPurchaseOptions(context),
-                  icon: const Icon(Icons.shopping_cart_outlined, size: 18),
-                  label: const Text('Продлить подписку'),
                 ),
               ),
             ],
