@@ -17,18 +17,17 @@ class TelemostServiceAccount {
   String get cookieHeader => 'Session_id=$sessionId; yandexuid=$yandexUid';
 }
 
-/// Built-in service accounts (4), lightly obfuscated as base64 of
-/// `login\nsessionId\nyandexUid` — not security, just so the raw cookies
-/// do not show up in a plain-text grep.
+/// Service accounts are passed at build time as a comma-separated list:
+/// `--dart-define=TELEMOST_ACCOUNTS=<blob>,<blob>,...`, where each blob is
+/// base64 of `login\nsessionId\nyandexUid`. These are live Yandex
+/// cookies, so they must never sit in the tree: a build without the define
+/// gets an empty list and on-demand conference creation is unavailable.
 final List<TelemostServiceAccount> telemostServiceAccounts = [
-  for (final blob in _accountBlobs) _decode(blob),
+  for (final blob in _accountBlobs.split(','))
+    if (blob.trim().isNotEmpty) _decode(blob.trim()),
 ];
 
-const _accountBlobs = [
-  // ВЫРЕЗАНО перед пушем в приватный репозиторий: здесь лежали четыре живых
-  // Yandex Session_id. Реальные значения — telemost-backup/SECRETS-LOCAL-ONLY.txt
-  // и в локальном коммите 1aa27d9. Подставить обратно перед сборкой этой ветки.
-];
+const _accountBlobs = String.fromEnvironment('TELEMOST_ACCOUNTS');
 
 TelemostServiceAccount _decode(String blob) {
   final parts = utf8.decode(base64Decode(blob)).split('\n');
