@@ -178,6 +178,20 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       await clearPending();
       final url = payload['sub_url'] as String?;
       final claim = payload['claim_url'] as String?;
+      if ((url == null || url.isEmpty) && payload['owned'] == true) {
+        // Платёж оплачен, но закреплён за другим Telegram-аккаунтом: сервер
+        // отдаёт ссылку подписки только владельцу (знать id платежа мало).
+        // Без этой ветки экран «оплачено» не показывался бы вовсе — subUrl
+        // остаётся null, и лист молча возвращается к списку тарифов.
+        if (!context.mounted) return;
+        paying.value = false;
+        busyIdx.value = null;
+        pollTimedOut.value = false;
+        payError.value = 'Оплата прошла, но подписка привязана к другому '
+            'Telegram-аккаунту. Войдите под ним или напишите в поддержку.';
+        await ref.read(accountNotifierProvider.notifier).refresh();
+        return;
+      }
       final ok = url != null && url.isNotEmpty && await importSubUrl(url);
       if (!context.mounted) return;
       subUrl.value = url;
