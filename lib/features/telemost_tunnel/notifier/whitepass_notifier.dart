@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/features/telemost_tunnel/notifier/telemost_tunnel_notifier.dart';
+import 'package:hiddify/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -64,9 +65,11 @@ class WhitePassNotifier extends StateNotifier<int> with AppLogger {
     loggy.info('whitepass: access expired');
     state = 0;
     unawaited(_ref.read(Preferences.whitePassUnlockUntil.notifier).update(0));
-    // Shut the tunnel down if it was running on the cheat access; whether the
-    // tab stays open afterwards is decided by the regular TG-based gate.
+    // Shut the tunnels down if they were running on the cheat access;
+    // whether the tabs stay open afterwards is decided by the regular
+    // TG-based gate. WBStream shares the gate, so it goes down too.
     unawaited(_ref.read(telemostTunnelNotifierProvider.notifier).deactivate());
+    unawaited(_ref.read(wbstreamTunnelNotifierProvider.notifier).deactivate());
   }
 
   @override

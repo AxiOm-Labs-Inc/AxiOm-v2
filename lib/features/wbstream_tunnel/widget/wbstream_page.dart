@@ -1,11 +1,11 @@
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:hiddify/core/notification/in_app_notification_controller.dart';
 import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
+import 'package:hiddify/core/widget/connect_lock_shield.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_features_provider.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
@@ -14,16 +14,17 @@ import 'package:hiddify/features/connection/model/core_owner.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/telemost_tunnel/model/telemost_settings.dart';
 import 'package:hiddify/features/telemost_tunnel/notifier/telemost_tunnel_notifier.dart';
-import 'package:hiddify/features/telemost_tunnel/widget/telemost_connect_button.dart';
+import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
+import 'package:hiddify/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
+import 'package:hiddify/features/wbstream_tunnel/widget/wbstream_connect_button.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-/// The «AxiOm Telemost» tab: tunnel connect/disconnect via on-demand
-/// conference creation (built-in service accounts) with the server-side
-/// links (Yandex.Disk, A/B failover) as fallback, plus the collapsed
-/// manual mode (hand-pasted link).
-class TelemostPage extends HookConsumerWidget with PresLogger {
-  const TelemostPage({super.key});
+/// The «AxiOm Telemost» tab: tunnel connect/disconnect through the static
+/// WB Stream room (stream.wb.ru) held open server-side. No accounts, no
+/// manual links — just the room id and the relay tuning knobs.
+class WbstreamPage extends HookConsumerWidget with PresLogger {
+  const WbstreamPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -51,9 +52,7 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
                 Text(
                   'Обход белых списков работает только на телефоне',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -62,24 +61,27 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
       );
     }
 
-    final notifier = ref.read(telemostTunnelNotifierProvider.notifier);
-    final tunnelState = ref.watch(telemostTunnelNotifierProvider);
+    final notifier = ref.read(wbstreamTunnelNotifierProvider.notifier);
+    final tunnelState = ref.watch(wbstreamTunnelNotifierProvider);
     final connectionState = ref.watch(connectionNotifierProvider).valueOrNull;
-    final coreActive = connectionState is Connected && ref.watch(coreOwnerProvider) == CoreOwner.telemost;
+    final coreOwner = ref.watch(coreOwnerProvider);
+    final coreActive = connectionState is Connected && coreOwner == CoreOwner.wbstream;
+    // UI lock: the core is up but NOT owned by this tunnel (main VPN
+    // connecting/connected, or a surviving core after an app restart) —
+    // shield the connect button instead of silently tearing the VPN down.
+    final vpnActive = coreOwner != CoreOwner.wbstream && connectionState != null && !connectionState.isDisconnected;
     final initial = notifier.settings;
 
     final busyTunnel = useState(false);
 
-    // Current conference link (local mirror of settings; updated by actions).
-    final linkText = useState(initial.joinLink);
-
     // Relay parameter fields.
+    final roomIdController = useTextEditingController(text: initial.roomId);
     final fpsController = useTextEditingController(text: '${initial.vp8Fps}');
     final batchController = useTextEditingController(text: '${initial.vp8Batch}');
     final dualTrack = useState(initial.dualTrack);
     final reliable = useState(initial.reliable);
 
-    void save(TelemostSettings Function(TelemostSettings) update) {
+    void save(WbstreamSettings Function(WbstreamSettings) update) {
       notifier.saveSettings(update(notifier.settings));
     }
 
@@ -88,16 +90,20 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
     }
 
     /// Full connect path: the main VPN goes down silently (mutual
-    /// exclusion), then on-demand conference creation → disk slots A/B →
-    /// manual link (all inside activate), then the core starts directly on
-    /// the Telemost config — no profile, no shared connection pipeline.
+    /// exclusion), then the relay joins the static WB Stream room (inside
+    /// activate), then the core starts directly on the WBStream config —
+    /// no profile, no shared connection pipeline.
     Future<void> connectTunnel() async {
       busyTunnel.value = true;
       try {
         await ref.read(connectionNotifierProvider.notifier).abortConnection();
+        // Mutual exclusion with the Telemost tunnel (same single core slot).
+        if (ref.read(telemostTunnelNotifierProvider) is! TelemostIdle) {
+          await ref.read(telemostTunnelNotifierProvider.notifier).deactivate();
+        }
         if (!await notifier.ensureConnected()) {
-          final err = ref.read(telemostTunnelNotifierProvider);
-          toastError(err is TelemostError ? err.message : 'Туннель не поднялся');
+          final err = ref.read(wbstreamTunnelNotifierProvider);
+          toastError(err is WbstreamError ? err.message : 'Туннель не поднялся');
           notifier.resetError();
           return;
         }
@@ -110,8 +116,7 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
       }
     }
 
-    /// Stops the telemost-owned core, then the relay and the manager-side
-    /// creator (all inside deactivate).
+    /// Stops the wbstream-owned core, then the relay (all inside deactivate).
     Future<void> disconnectTunnel() async {
       busyTunnel.value = true;
       try {
@@ -121,46 +126,34 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
       }
     }
 
-    final tunnelUp = tunnelState is TelemostConnected;
+    final tunnelUp = tunnelState is WbstreamConnected;
     final heroState =
         busyTunnel.value ||
-            tunnelState is TelemostStarting ||
-            tunnelState is TelemostConnecting ||
-            tunnelState is TelemostLost
-        ? TelemostHeroState.connecting
+            tunnelState is WbstreamStarting ||
+            tunnelState is WbstreamConnecting ||
+            tunnelState is WbstreamLost
+        ? WbstreamHeroState.connecting
         : tunnelUp || coreActive
-        ? TelemostHeroState.active
-        : TelemostHeroState.idle;
+        ? WbstreamHeroState.active
+        : WbstreamHeroState.idle;
 
     void onHeroTap() {
       if (busyTunnel.value) return;
       switch (heroState) {
-        case TelemostHeroState.idle:
+        case WbstreamHeroState.idle:
           connectTunnel();
-        case TelemostHeroState.connecting || TelemostHeroState.active:
+        case WbstreamHeroState.connecting || WbstreamHeroState.active:
           disconnectTunnel();
       }
     }
 
     final statusDetail = switch (tunnelState) {
-      TelemostConnected() when coreActive => 'Туннель активен',
-      TelemostConnected() => 'Туннель активен, ядро подключается…',
-      TelemostStarting(slot: final slot, failedSlot: final failed) =>
-        slot == 'on-demand'
-            ? 'Создаём звонок…'
-            : failed != null && slot != null
-            ? 'Сервер $failed не ответил, пробуем сервер $slot…'
-            : slot != null
-            ? 'Подключаемся (сервер $slot)…'
-            : 'Подготовка туннеля…',
-      TelemostConnecting(slot: final slot) =>
-        slot == 'on-demand'
-            ? 'Вход в созданную конференцию…'
-            : slot != null
-            ? 'Вход в конференцию (сервер $slot)…'
-            : 'Вход в конференцию…',
-      TelemostLost() => 'Связь прервалась, восстанавливаем…',
-      TelemostError(:final message) => 'Ошибка: $message',
+      WbstreamConnected() when coreActive => 'Туннель активен',
+      WbstreamConnected() => 'Туннель активен, ядро подключается…',
+      WbstreamStarting() => 'Подготовка туннеля…',
+      WbstreamConnecting() => 'Вход в конференцию…',
+      WbstreamLost() => 'Связь прервалась, восстанавливаем…',
+      WbstreamError(:final message) => 'Ошибка: $message',
       _ => 'Готов к подключению',
     };
 
@@ -176,14 +169,18 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
               // ── Управление туннелем ──────────────────────────────────────
               const Gap(16),
               Center(
-                child: TelemostConnectButton(state: heroState, onTap: onHeroTap),
+                child: ConnectLockShield(
+                  locked: vpnActive,
+                  message: 'Активен VPN — сначала отключите его',
+                  child: WbstreamConnectButton(state: heroState, onTap: onHeroTap),
+                ),
               ),
               const Gap(20),
               Text(
                 switch (heroState) {
-                  TelemostHeroState.idle => 'Отключено',
-                  TelemostHeroState.connecting => 'Подключение…',
-                  TelemostHeroState.active => 'Подключено',
+                  WbstreamHeroState.idle => 'Отключено',
+                  WbstreamHeroState.connecting => 'Подключение…',
+                  WbstreamHeroState.active => 'Подключено',
                 },
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
@@ -198,9 +195,9 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: switch (heroState) {
-                        TelemostHeroState.idle => theme.colorScheme.onSurfaceVariant,
-                        TelemostHeroState.connecting => const Color(0xFFE5B260),
-                        TelemostHeroState.active => const Color(0xFF5DCAA5),
+                        WbstreamHeroState.idle => theme.colorScheme.onSurfaceVariant,
+                        WbstreamHeroState.connecting => const Color(0xFFE5B260),
+                        WbstreamHeroState.active => const Color(0xFF5DCAA5),
                       },
                     ),
                   ),
@@ -210,7 +207,7 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
                       statusDetail,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: tunnelState is TelemostError
+                        color: tunnelState is WbstreamError
                             ? theme.colorScheme.error
                             : theme.colorScheme.onSurfaceVariant,
                       ),
@@ -218,14 +215,12 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
                   ),
                 ],
               ),
-              if (heroState == TelemostHeroState.connecting) ...[
+              if (heroState == WbstreamHeroState.connecting) ...[
                 const Gap(8),
                 Text(
                   'Подключение в процессе — это может занять до двух минут',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
               ],
               const Gap(16),
@@ -242,11 +237,27 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
                       const Gap(8),
                       Expanded(
                         child: Text(
-                          'Имя в звонке выбирается случайно при каждом подключении',
+                          'Имя в трансляции выбирается случайно при каждом подключении',
                           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ),
                     ],
+                  ),
+                  const Gap(12),
+                  TextField(
+                    controller: roomIdController,
+                    autocorrect: false,
+                    keyboardType: TextInputType.text,
+                    decoration: const InputDecoration(
+                      labelText: 'ID конференции (необязательно)',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      final roomId = value.trim();
+                      if (roomId.isEmpty || WbstreamSettings.isValidRoomId(roomId)) {
+                        save((s) => s.copyWith(roomId: roomId));
+                      }
+                    },
                   ),
                   const Gap(12),
                   Row(
@@ -297,71 +308,10 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
                   const Gap(8),
                 ],
               ),
-
-              // ── Ручной режим ─────────────────────────────────────────────
-              ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                title: const Text('Ручной режим'),
-                subtitle: const Text('Своя ссылка на конференцию'),
-                children: [
-                  if (linkText.value.isNotEmpty)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            linkText.value,
-                            style: theme.textTheme.bodyMedium,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Скопировать',
-                          visualDensity: VisualDensity.compact,
-                          icon: const Icon(Icons.copy_rounded, size: 18),
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: linkText.value));
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Ссылка скопирована'), duration: Duration(seconds: 2)),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  const Gap(8),
-                  TextField(
-                    controller: useTextEditingController(text: initial.joinLink),
-                    autocorrect: false,
-                    keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                      labelText: 'Ссылка на конференцию вручную',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) {
-                      final link = value.trim();
-                      if (link.isEmpty || TelemostSettings.isValidJoinLink(link)) {
-                        linkText.value = link;
-                        save((s) => s.copyWith(joinLink: link));
-                      }
-                    },
-                  ),
-                  const Gap(8),
-                  Text(
-                    'Используется, если автоматическое создание звонка недоступно.',
-                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                  const Gap(8),
-                ],
-              ),
-              const Gap(8),
-              Text(
-                'Одна ссылка = одно устройство. Не подключайтесь к одной '
-                'конференции с двух устройств одновременно.',
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
               const Gap(16),
             ],
           ),
-          if (!entitled) const Positioned.fill(child: _TelemostGateOverlay()),
+          if (!entitled) const Positioned.fill(child: _WbstreamGateOverlay()),
         ],
       ),
     );
@@ -369,11 +319,12 @@ class TelemostPage extends HookConsumerWidget with PresLogger {
 }
 
 /// Blur gate shown over the whole tab when the user's tariff doesn't include
-/// AxiOm Telemost: blocks all interaction with the content underneath and
-/// either points to the «Стандарт» tariff (account connected) or offers
-/// to connect an account first.
-class _TelemostGateOverlay extends ConsumerWidget {
-  const _TelemostGateOverlay();
+/// the whitelist-bypass entitlement: blocks all interaction with the content
+/// underneath and either points to the «Стандарт» tariff (account connected)
+/// or offers to connect an account first. Shared with the Telemost tab — the
+/// server-side entitlement covers both bypass modes.
+class _WbstreamGateOverlay extends ConsumerWidget {
+  const _WbstreamGateOverlay();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

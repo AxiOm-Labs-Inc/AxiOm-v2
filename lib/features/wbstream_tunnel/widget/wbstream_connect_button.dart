@@ -5,24 +5,24 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
 /// Visual state of the hero button.
-enum TelemostHeroState { idle, connecting, active }
+enum WbstreamHeroState { idle, connecting, active }
 
 /// The «connected» accent of the app (same teal as branding/server cards).
 const _connectedAccent = Color(0xFF5DCAA5);
 
-/// Round connect button for the Telemost tab, ported from the
+/// Round connect button for the WBStream tab, ported from the
 /// whitelist-bypass Android client («hero»: rotating sweep-gradient outer
 /// ring, dashed mid ring, inner panel, pulse ripple, press overshoot) and
 /// recolored to the app palette (theme primary while connecting, app teal
 /// when active).
-class TelemostConnectButton extends HookWidget {
-  const TelemostConnectButton({
+class WbstreamConnectButton extends HookWidget {
+  const WbstreamConnectButton({
     required this.state,
     required this.onTap,
     super.key,
   });
 
-  final TelemostHeroState state;
+  final WbstreamHeroState state;
   final VoidCallback onTap;
 
   @override
@@ -30,8 +30,8 @@ class TelemostConnectButton extends HookWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    final connecting = state == TelemostHeroState.connecting;
-    final active = state == TelemostHeroState.active;
+    final connecting = state == WbstreamHeroState.connecting;
+    final active = state == WbstreamHeroState.active;
     final accent = active ? _connectedAccent : scheme.primary;
 
     // Outer ring rotation: 6s per turn while connecting, 18s when active,
@@ -39,13 +39,13 @@ class TelemostConnectButton extends HookWidget {
     final rotation = useAnimationController(duration: const Duration(seconds: 6));
     useEffect(() {
       switch (state) {
-        case TelemostHeroState.connecting:
+        case WbstreamHeroState.connecting:
           rotation.duration = const Duration(seconds: 6);
           rotation.repeat();
-        case TelemostHeroState.active:
+        case WbstreamHeroState.active:
           rotation.duration = const Duration(seconds: 18);
           rotation.repeat();
-        case TelemostHeroState.idle:
+        case WbstreamHeroState.idle:
           rotation.stop();
           rotation.reset();
       }
@@ -68,14 +68,14 @@ class TelemostConnectButton extends HookWidget {
     final pressed = useState(false);
 
     final label = switch (state) {
-      TelemostHeroState.idle => 'ПОДКЛЮЧИТЬ',
-      TelemostHeroState.connecting => 'ОТМЕНА',
-      TelemostHeroState.active => 'ОТКЛЮЧИТЬ',
+      WbstreamHeroState.idle => 'ПОДКЛЮЧИТЬ',
+      WbstreamHeroState.connecting => 'ОТМЕНА',
+      WbstreamHeroState.active => 'ОТКЛЮЧИТЬ',
     };
     final foreground = switch (state) {
-      TelemostHeroState.idle => scheme.onSurfaceVariant,
-      TelemostHeroState.connecting => scheme.primary,
-      TelemostHeroState.active => Colors.white,
+      WbstreamHeroState.idle => scheme.onSurfaceVariant,
+      WbstreamHeroState.connecting => scheme.primary,
+      WbstreamHeroState.active => Colors.white,
     };
 
     return SizedBox(
@@ -85,7 +85,7 @@ class TelemostConnectButton extends HookWidget {
         alignment: Alignment.center,
         children: [
           // Outer rotating sweep-gradient glow.
-          if (state != TelemostHeroState.idle)
+          if (state != WbstreamHeroState.idle)
             Positioned.fill(
               child: IgnorePointer(
                 child: RotationTransition(
@@ -117,7 +117,7 @@ class TelemostConnectButton extends HookWidget {
             child: CustomPaint(
               size: const Size(220, 220),
               painter: _DashedCirclePainter(
-                color: state == TelemostHeroState.idle ? scheme.outlineVariant : accent.withValues(alpha: 0.6),
+                color: state == WbstreamHeroState.idle ? scheme.outlineVariant : accent.withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -178,9 +178,9 @@ class TelemostConnectButton extends HookWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: switch (state) {
-                    TelemostHeroState.idle => scheme.surface,
-                    TelemostHeroState.connecting => scheme.primary.withValues(alpha: 0.12),
-                    TelemostHeroState.active => _connectedAccent,
+                    WbstreamHeroState.idle => scheme.surface,
+                    WbstreamHeroState.connecting => scheme.primary.withValues(alpha: 0.12),
+                    WbstreamHeroState.active => _connectedAccent,
                   },
                   border: active
                       ? null

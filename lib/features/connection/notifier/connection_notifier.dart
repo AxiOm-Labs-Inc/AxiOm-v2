@@ -15,6 +15,8 @@ import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
 import 'package:hiddify/features/telemost_tunnel/model/telemost_settings.dart';
 import 'package:hiddify/features/telemost_tunnel/notifier/telemost_tunnel_notifier.dart';
+import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
+import 'package:hiddify/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:hiddify/hiddifycore/init_signal.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -98,10 +100,11 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> reconnect(ProfileEntity? profile) async {
-    // The core belongs to the Telemost tunnel — a profile change must not
-    // hijack it. An explicit VPN connect goes through _connectThrottled,
-    // which handles the exclusion itself.
-    if (ref.read(coreOwnerProvider) == CoreOwner.telemost) return;
+    // The core belongs to a tunnel mode — a profile change must not hijack
+    // it. An explicit VPN connect goes through _connectThrottled, which
+    // handles the exclusion itself.
+    final owner = ref.read(coreOwnerProvider);
+    if (owner == CoreOwner.telemost || owner == CoreOwner.wbstream) return;
     if (state case AsyncData(:final value) when value == const Connected()) {
       if (profile == null) {
         loggy.info("no active profile, disconnecting");
@@ -145,11 +148,15 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> _connectThrottled() async {
-    // Mutual exclusion: a running Telemost tunnel is silently torn down
-    // first (its deactivate stops the telemost-owned core too).
+    // Mutual exclusion: a running tunnel (Telemost or WBStream) is silently
+    // torn down first (its deactivate stops the tunnel-owned core too).
     if (ref.read(telemostTunnelNotifierProvider) is! TelemostIdle) {
       loggy.info("telemost tunnel active, deactivating before VPN connect");
       await ref.read(telemostTunnelNotifierProvider.notifier).deactivate();
+    }
+    if (ref.read(wbstreamTunnelNotifierProvider) is! WbstreamIdle) {
+      loggy.info("wbstream tunnel active, deactivating before VPN connect");
+      await ref.read(wbstreamTunnelNotifierProvider.notifier).deactivate();
     }
 
     final initialProfile = await ref.read(activeProfileProvider.future);
@@ -217,11 +224,12 @@ Future<bool> serviceRunning(Ref ref) async {
 }
 
 /// What the home screen shows as «the VPN status»: while the core is owned
-/// by the Telemost tunnel, the main VPN is reported as disconnected — the
-/// two services are independent and never share an indicator.
+/// by a tunnel mode (Telemost or WBStream), the main VPN is reported as
+/// disconnected — the services are independent and never share an indicator.
 final vpnConnectionStatusProvider = Provider<AsyncValue<ConnectionStatus>>((ref) {
   final status = ref.watch(connectionNotifierProvider);
-  if (ref.watch(coreOwnerProvider) == CoreOwner.telemost) {
+  final owner = ref.watch(coreOwnerProvider);
+  if (owner == CoreOwner.telemost || owner == CoreOwner.wbstream) {
     return const AsyncData(Disconnected());
   }
   return status;

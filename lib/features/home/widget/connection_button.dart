@@ -11,12 +11,16 @@ import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/core/theme/theme_extensions.dart';
 import 'package:hiddify/core/widget/animated_text.dart';
+import 'package:hiddify/core/widget/connect_lock_shield.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
+import 'package:hiddify/features/connection/model/core_owner.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
 import 'package:hiddify/features/proxy/active/active_proxy_notifier.dart';
 import 'package:hiddify/features/settings/data/config_option_repository.dart';
 import 'package:hiddify/features/settings/notifier/config_option/config_option_notifier.dart';
+import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
+import 'package:hiddify/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:hiddify/gen/assets.gen.dart';
 import 'package:hiddify/singbox/model/singbox_config_enum.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -116,6 +120,13 @@ class ConnectionButton extends HookConsumerWidget {
 
     const buttonTheme = ConnectionButtonTheme.light;
 
+    // UI lock: the Telemost tunnel owns (or is bringing up) the single core —
+    // shield the VPN button instead of silently tearing the tunnel down. The
+    // tunnel state covers the connect path before the core starts, the owner
+    // tag covers a running tunnel-owned core.
+    final tunnelState = ref.watch(wbstreamTunnelNotifierProvider);
+    final tunnelActive = tunnelState is! WbstreamIdle || ref.watch(coreOwnerProvider) == CoreOwner.wbstream;
+
     // isConnected drives the timer — NOT delay, so ping retests don't reset the clock
     final isConnected = connectionStatus.valueOrNull is Connected && requiresReconnect != true;
     final fullyConnected = isConnected && delay > 0 && delay < 65000;
@@ -153,6 +164,7 @@ class ConnectionButton extends HookConsumerWidget {
         final secs = (DateTime.now().millisecondsSinceEpoch - ms) ~/ 1000;
         elapsedSeconds.value = secs < 0 ? 0 : secs;
       }
+
       tick();
       final timer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
       return timer.cancel;
@@ -171,22 +183,24 @@ class ConnectionButton extends HookConsumerWidget {
       AsyncData(value: Connected()) when delay <= 0 || delay >= 65000 => const _HandshakeIndicator(),
       AsyncData(value: Connected()) when fullyConnected => _ElapsedTimer(seconds: elapsedSeconds.value),
       AsyncError() => _RetryPill(
-          onRetry: () async {
-            if (ref.read(activeProfileProvider).valueOrNull == null) {
-              await ref.read(dialogNotifierProvider.notifier).showNoActiveProfile();
-              ref.read(bottomSheetsNotifierProvider.notifier).showAddProfile();
-              return;
-            }
-            if (await ref.read(dialogNotifierProvider.notifier).showExperimentalFeatureNotice()) {
-              await ref.read(connectionNotifierProvider.notifier).toggleConnection();
-            }
-          },
-        ),
+        onRetry: () async {
+          if (ref.read(activeProfileProvider).valueOrNull == null) {
+            await ref.read(dialogNotifierProvider.notifier).showNoActiveProfile();
+            ref.read(bottomSheetsNotifierProvider.notifier).showAddProfile();
+            return;
+          }
+          if (await ref.read(dialogNotifierProvider.notifier).showExperimentalFeatureNotice()) {
+            await ref.read(connectionNotifierProvider.notifier).toggleConnection();
+          }
+        },
+      ),
       _ => null,
     };
 
     return _ConnectionButton(
       extraWidget: extraWidget,
+      locked: tunnelActive,
+      lockMessage: 'Активен Telemost — сначала отключите его',
       onTap: switch (connectionStatus) {
         AsyncData(value: Connected()) when requiresReconnect == true => () async {
           final activeProfile = await ref.read(activeProfileProvider.future);
@@ -272,6 +286,8 @@ class _ConnectionButton extends StatelessWidget {
     required this.animated,
     required this.secureLabel,
     required this.isConnected,
+    this.locked = false,
+    this.lockMessage = '',
     this.extraWidget,
   });
 
@@ -285,6 +301,8 @@ class _ConnectionButton extends StatelessWidget {
   final Color newButtonColor;
   final bool animated;
   final bool isConnected;
+  final bool locked;
+  final String lockMessage;
   final Widget? extraWidget;
 
   @override
@@ -299,47 +317,43 @@ class _ConnectionButton extends StatelessWidget {
           child: GestureDetector(
             key: const ValueKey("home_connection_button"),
             onTap: onTap,
-            child: Container(
-              width: 180,
-              height: 180,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: 24,
-                    spreadRadius: 2,
-                    color: buttonColor.withValues(alpha: .45),
-                  ),
-                ],
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: isConnected
-                        ? Assets.images.connectButtonConnected.svg(
-                            key: const ValueKey("svg_connected"),
-                            fit: BoxFit.contain,
-                          )
-                        : Assets.images.connectButton.svg(
-                            key: const ValueKey("svg_disconnected"),
-                            fit: BoxFit.contain,
-                          ),
-                  ),
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 300),
-                    style: TextStyle(
-                      fontSize: 115,
-                      fontWeight: FontWeight.w400,
-                      color: isConnected
-                          ? const Color(0xFF0F6E56)
-                          : const Color(0xFF185FA5),
-                      height: 1.0,
+            child: ConnectLockShield(
+              locked: locked,
+              message: lockMessage,
+              child: Container(
+                width: 180,
+                height: 180,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(blurRadius: 24, spreadRadius: 2, color: buttonColor.withValues(alpha: .45))],
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: isConnected
+                          ? Assets.images.connectButtonConnected.svg(
+                              key: const ValueKey("svg_connected"),
+                              fit: BoxFit.contain,
+                            )
+                          : Assets.images.connectButton.svg(
+                              key: const ValueKey("svg_disconnected"),
+                              fit: BoxFit.contain,
+                            ),
                     ),
-                    child: const Text('Ω'),
-                  ),
-                ],
+                    AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 300),
+                      style: TextStyle(
+                        fontSize: 115,
+                        fontWeight: FontWeight.w400,
+                        color: isConnected ? const Color(0xFF0F6E56) : const Color(0xFF185FA5),
+                        height: 1.0,
+                      ),
+                      child: const Text('Ω'),
+                    ),
+                  ],
+                ),
               ),
             ).animate(target: enabled ? 0 : 1).blurXY(end: 1),
           ).animate(target: enabled ? 0 : 1).scaleXY(end: .88, curve: Curves.easeIn),
@@ -358,17 +372,14 @@ class _ConnectionButton extends StatelessWidget {
                     const Gap(4),
                     Text(
                       secureLabel,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.secondary,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.secondary),
                     ),
                   ],
                 ),
               ],
-              if (extraWidget != null) ...[
-                const Gap(6),
-                extraWidget!,
-              ],
+              if (extraWidget != null) ...[const Gap(6), extraWidget!],
             ],
           ),
         ),
@@ -399,12 +410,7 @@ class _HandshakeIndicator extends StatelessWidget {
         const SizedBox(width: 6),
         const Text(
           'HANDSHAKE · TLS 1.3',
-          style: TextStyle(
-            fontSize: 10,
-            letterSpacing: 2.0,
-            fontWeight: FontWeight.w500,
-            color: gold,
-          ),
+          style: TextStyle(fontSize: 10, letterSpacing: 2.0, fontWeight: FontWeight.w500, color: gold),
         ),
       ],
     );
