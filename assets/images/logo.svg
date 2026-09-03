@@ -10,6 +10,9 @@
   <circle cx="256.00" cy="256.00" r="195.69" fill="none" stroke="#5BA3FF" stroke-width="5.99"/>
   <ellipse cx="256.00" cy="256.00" rx="79.87" ry="195.69" fill="none" stroke="#5BA3FF" stroke-width="2.00" opacity="0.5"/>
   <line x1="60.31" y1="256.00" x2="451.69" y2="256.00" stroke="#5BA3FF" stroke-width="2.00" opacity="0.35"/>
-  <text x="256.00" y="256.00" dominant-baseline="central" text-anchor="middle"
-        font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-weight="500" font-size="311.50" fill="#5BA3FF">Ω</text>
+  <g fill="none" stroke="#5BA3FF" stroke-width="28" stroke-linecap="round">
+    <path d="M218.5 348.7 A100 100 0 1 1 293.5 348.7"/>
+    <path d="M152 356 H222"/>
+    <path d="M290 356 H360"/>
+  </g>
 </svg>

@@ -3,7 +3,9 @@
     <item>
         <bitmap android:gravity="fill" android:src="@drawable/background"/>
     </item>
-    <item>
-        <bitmap android:gravity="center" android:src="@drawable/splash"/>
-    </item>
+    <item
+        android:drawable="@drawable/axiom_logo"
+        android:gravity="center"
+        android:width="192dp"
+        android:height="192dp"/>
 </layer-list>
