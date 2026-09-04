@@ -109,9 +109,6 @@ abstract class Preferences {
   /// network until the session is restored.
   static final telemostEntitled = PreferencesNotifier.create<bool, bool>("telemost_entitled", false);
 
-  /// WhitePass cheat-code unlock expiry (unix ms, 0 = locked). Persisted so an
-  /// app restart neither extends nor resets the 2-hour window.
-  static final whitePassUnlockUntil = PreferencesNotifier.create<int, int>("whitepass_unlock_until", 0);
 
   static final actionAtClose = PreferencesNotifier.create<ActionsAtClosing, String>(
     "action_at_close",

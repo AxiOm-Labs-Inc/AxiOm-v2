@@ -23,7 +23,6 @@ import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
 import 'package:hiddify/features/proxy/overview/server_list_cache_watcher.dart';
 import 'package:hiddify/features/system_tray/notifier/system_tray_notifier.dart';
-import 'package:hiddify/features/account/notifier/whitepass_notifier.dart';
 import 'package:hiddify/features/window/notifier/window_notifier.dart';
 import 'package:hiddify/hiddifycore/hiddify_core_service_provider.dart';
 import 'package:hiddify/riverpod_observer.dart';
@@ -85,8 +84,6 @@ Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async
   await _safeInit("active profile", () => container.read(activeProfileProvider.future), timeout: 1000);
   // Start syncing the offline server list with the active profile right away.
   container.read(serverListCacheWatcherProvider);
-  // Restore any active WhitePass window and arm its expiry timer.
-  container.read(whitePassNotifierProvider);
   // Shut the tunnel down whenever the Telemost gate closes.
   container.read(telemostGateGuardProvider);
   await _init("hiddify-core", () => container.read(hiddifyCoreServiceProvider).init());
