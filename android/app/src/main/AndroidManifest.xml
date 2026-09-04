@@ -28,6 +28,7 @@
 
     <application
         android:name=".Application"
+        android:allowBackup="false"
         android:banner="@mipmap/ic_banner"
         android:extractNativeLibs="true"
         android:icon="@mipmap/ic_launcher"
@@ -77,6 +78,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
+                <data android:scheme="axiom" />
                 <data android:scheme="hiddify" />
                 <data android:scheme="v2ray" />
                 <data android:scheme="v2rayn" />
