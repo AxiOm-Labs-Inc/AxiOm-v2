@@ -14,6 +14,7 @@ import 'package:hiddify/core/model/environment.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/core/preferences/preferences_migration.dart';
 import 'package:hiddify/core/preferences/preferences_provider.dart';
+import 'package:hiddify/features/account/notifier/account_features_provider.dart';
 import 'package:hiddify/features/app/widget/app.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
 import 'package:hiddify/features/auto_start/notifier/auto_start_notifier.dart';
@@ -83,6 +84,8 @@ Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async
   await _safeInit("active profile", () => container.read(activeProfileProvider.future), timeout: 1000);
   // Start syncing the offline server list with the active profile right away.
   container.read(serverListCacheWatcherProvider);
+  // Shut the tunnel down whenever the Telemost gate closes.
+  container.read(telemostGateGuardProvider);
   await _init("hiddify-core", () => container.read(hiddifyCoreServiceProvider).init());
 
   if (!kIsWeb) {

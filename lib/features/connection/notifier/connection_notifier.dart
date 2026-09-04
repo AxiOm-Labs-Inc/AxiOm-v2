@@ -2,16 +2,19 @@ import 'dart:io';
 
 import 'package:hiddify/core/haptic/haptic_service.dart';
 import 'package:hiddify/core/localization/translations.dart';
+import 'package:hiddify/core/notification/in_app_notification_controller.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/features/connection/data/connection_data_providers.dart';
 import 'package:hiddify/features/connection/data/connection_repository.dart';
 import 'package:hiddify/features/connection/model/connection_failure.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
-import 'package:hiddify/core/notification/in_app_notification_controller.dart';
+import 'package:hiddify/features/connection/model/core_owner.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
+import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
+import 'package:hiddify/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:hiddify/hiddifycore/init_signal.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -95,6 +98,11 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> reconnect(ProfileEntity? profile) async {
+    // The core belongs to a tunnel mode — a profile change must not hijack
+    // it. An explicit VPN connect goes through _connectThrottled, which
+    // handles the exclusion itself.
+    final owner = ref.read(coreOwnerProvider);
+    if (owner == CoreOwner.wbstream) return;
     if (state case AsyncData(:final value) when value == const Connected()) {
       if (profile == null) {
         loggy.info("no active profile, disconnecting");
@@ -102,6 +110,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       }
       loggy.info("active profile changed, reconnecting");
       await ref.read(Preferences.startedByUser.notifier).update(true);
+      ref.read(coreOwnerProvider.notifier).state = CoreOwner.vpn;
       await _connectionRepo.reconnect(profile, ref.read(Preferences.disableMemoryLimit)).mapLeft((err) async {
         loggy.warning("error reconnecting", err);
         state = AsyncError(err, StackTrace.current);
@@ -137,6 +146,13 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> _connectThrottled() async {
+    // Mutual exclusion: a running WBStream tunnel is silently torn down first
+    // (its deactivate stops the tunnel-owned core too).
+    if (ref.read(wbstreamTunnelNotifierProvider) is! WbstreamIdle) {
+      loggy.info("wbstream tunnel active, deactivating before VPN connect");
+      await ref.read(wbstreamTunnelNotifierProvider.notifier).deactivate();
+    }
+
     final initialProfile = await ref.read(activeProfileProvider.future);
     if (initialProfile == null) {
       loggy.info("no active profile, not connecting");
@@ -166,6 +182,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     final activeProfile = await ref.read(activeProfileProvider.future);
     if (activeProfile == null) return;
 
+    ref.read(coreOwnerProvider.notifier).state = CoreOwner.vpn;
     await _connectionRepo.connect(activeProfile, ref.read(Preferences.disableMemoryLimit)).mapLeft((
       ConnectionFailure err,
     ) async {
@@ -188,6 +205,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
           .showCustomAlertFromErr(err.present(ref.read(translationsProvider).requireValue));
       state = AsyncError(err, StackTrace.current);
     }).run();
+    ref.read(coreOwnerProvider.notifier).state = CoreOwner.none;
   }
 }
 
@@ -198,6 +216,18 @@ Future<bool> serviceRunning(Ref ref) async {
       .watch(connectionNotifierProvider.selectAsync((data) => data.isConnected))
       .onError((error, stackTrace) => false);
 }
+
+/// What the home screen shows as «the VPN status»: while the core is owned
+/// by a tunnel mode (Telemost or WBStream), the main VPN is reported as
+/// disconnected — the services are independent and never share an indicator.
+final vpnConnectionStatusProvider = Provider<AsyncValue<ConnectionStatus>>((ref) {
+  final status = ref.watch(connectionNotifierProvider);
+  final owner = ref.watch(coreOwnerProvider);
+  if (owner == CoreOwner.wbstream) {
+    return const AsyncData(Disconnected());
+  }
+  return status;
+});
 
 class SingleCall {
   bool _running = false;
@@ -213,4 +243,3 @@ class SingleCall {
     }
   }
 }
-

@@ -21,6 +21,7 @@ abstract interface class ConnectionRepository {
   TaskEither<ConnectionFailure, Unit> setup();
   Stream<ConnectionStatus> watchConnectionStatus();
   TaskEither<ConnectionFailure, Unit> connect(ProfileEntity activeProfile, bool disableMemoryLimit);
+  TaskEither<ConnectionFailure, Unit> connectConfig(String configPath, String name, bool disableMemoryLimit);
   TaskEither<ConnectionFailure, Unit> disconnect();
   TaskEither<ConnectionFailure, Unit> reconnect(ProfileEntity activeProfile, bool disableMemoryLimit);
 }
@@ -79,26 +80,37 @@ class ConnectionRepositoryImpl with ExceptionHandler, InfraLogger implements Con
 
   @override
   TaskEither<ConnectionFailure, Unit> connect(ProfileEntity activeProfile, bool disableMemoryLimit) => setup().flatMap(
-    (_) => applyConfigOption(activeProfile).flatMap(
+    (_) => applyConfigOption(activeProfile.profileOverride).flatMap(
       (_) => singbox.start(profilePathResolver.file(activeProfile.id).path, activeProfile.name, disableMemoryLimit),
       // .mapLeft(UnexpectedConnectionFailure.new),
     ),
   );
+
+  /// Profile-less connect used by the Telemost tunnel: the config fragment
+  /// is read from an explicit file, no profile entity is involved. Default
+  /// config options apply (same as a profile without overrides).
+  @override
+  TaskEither<ConnectionFailure, Unit> connectConfig(String configPath, String name, bool disableMemoryLimit) =>
+      setup().flatMap(
+        (_) => applyConfigOption(null).flatMap(
+          (_) => singbox.start(configPath, name, disableMemoryLimit),
+        ),
+      );
 
   @override
   TaskEither<ConnectionFailure, Unit> disconnect() => singbox.stop().mapLeft(UnexpectedConnectionFailure.new);
 
   @override
   TaskEither<ConnectionFailure, Unit> reconnect(ProfileEntity activeProfile, bool disableMemoryLimit) =>
-      applyConfigOption(activeProfile).flatMap(
+      applyConfigOption(activeProfile.profileOverride).flatMap(
         (_) => singbox
             .restart(profilePathResolver.file(activeProfile.id).path, activeProfile.name, disableMemoryLimit)
             .mapLeft(UnexpectedConnectionFailure.new),
       );
 
   @visibleForTesting
-  TaskEither<ConnectionFailure, Unit> applyConfigOption(ProfileEntity prof) =>
-      TaskEither.fromEither(configOptionRepository.fullOptionsOverrided(prof.profileOverride))
+  TaskEither<ConnectionFailure, Unit> applyConfigOption(String? profileOverride) =>
+      TaskEither.fromEither(configOptionRepository.fullOptionsOverrided(profileOverride))
           .mapLeft((l) => ConnectionFailure.invalidConfigOption(null, l))
           .flatMap(
             (overridedOptions) => TaskEither.tryCatch(() async {

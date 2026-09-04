@@ -42,7 +42,7 @@ class HomePage extends HookConsumerWidget {
     final appInfo = ref.watch(appInfoProvider).valueOrNull;
 
     // Periodic URL-test every 30 s while connected and the home screen is visible.
-    final connectionStatus = ref.watch(connectionNotifierProvider);
+    final connectionStatus = ref.watch(vpnConnectionStatusProvider);
     final isConnected = connectionStatus is AsyncData && connectionStatus.value is Connected;
     final proxiesGroup = ref.watch(proxiesOverviewNotifierProvider).valueOrNull;
     final urlTestTag = proxiesGroup?.tag;
@@ -266,7 +266,7 @@ class _StatRow extends HookConsumerWidget {
     final token = url != null ? extractDeviceUsername(url) : null;
 
     // Refresh device count on connect/disconnect transitions.
-    ref.listen(connectionNotifierProvider, (prev, next) {
+    ref.listen(vpnConnectionStatusProvider, (prev, next) {
       final was = prev?.valueOrNull is Connected;
       final now = next.valueOrNull is Connected;
       if (was != now && token != null) {
@@ -294,7 +294,7 @@ class _StatRow extends HookConsumerWidget {
       devicesStr = '${deviceInfo.connected}/$limitStr';
     }
 
-    final connectionStatus = ref.watch(connectionNotifierProvider);
+    final connectionStatus = ref.watch(vpnConnectionStatusProvider);
     final isConnected = connectionStatus is AsyncData && connectionStatus.value is Connected;
     final delay = activeProxy?.urlTestDelay ?? 0;
     final pingStr = (isConnected && delay > 0 && delay < 65000) ? '${delay}${s.ms}' : '—';

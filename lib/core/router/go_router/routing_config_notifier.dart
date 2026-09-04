@@ -19,7 +19,7 @@ import 'package:hiddify/features/settings/overview/sections/route_options_page.d
 import 'package:hiddify/features/settings/overview/sections/tls_tricks_page.dart';
 import 'package:hiddify/features/settings/overview/sections/warp_options_page.dart';
 import 'package:hiddify/features/settings/overview/settings_page.dart';
-import 'package:hiddify/features/telemost/widget/telemost_placeholder_page.dart';
+import 'package:hiddify/features/wbstream_tunnel/widget/wbstream_page.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -28,7 +28,7 @@ part 'routing_config_notifier.g.dart';
 // each branch in go router has its own focus scope
 final branchesScope = <String, FocusScopeNode>{
   'home': FocusScopeNode(),
-  'telemost': FocusScopeNode(),
+  'wbstream': FocusScopeNode(),
   'profiles': FocusScopeNode(),
   'settings': FocusScopeNode(),
 };
@@ -38,7 +38,7 @@ final loadingConfig = RoutingConfig(
   routes: <RouteBase>[GoRoute(path: '/home', builder: (context, state) => const Material())],
 );
 
-const _branchNames = ['home', 'telemost', 'profiles', 'settings'];
+const _branchNames = ['home', 'wbstream', 'profiles', 'settings'];
 
 String getNameOfBranch(int index) => _branchNames[index];
 
@@ -100,13 +100,13 @@ class RoutingConfigNotifier extends _$RoutingConfigNotifier {
                 ),
               ],
             ),
-            // Branch 1: Telemost (placeholder until feature ships)
+            // Branch 1: WBStream
             StatefulShellBranch(
               routes: <GoRoute>[
                 GoRoute(
-                  name: 'telemost',
-                  path: '/telemost',
-                  builder: (_, _) => FocusScope(node: branchesScope['telemost'], child: const TelemostPlaceholderPage()),
+                  name: 'wbstream',
+                  path: '/wbstream',
+                  builder: (_, _) => FocusScope(node: branchesScope['wbstream'], child: const WbstreamPage()),
                 ),
               ],
             ),
