@@ -6,10 +6,9 @@ This feature bundles and adapts code from whitelist-bypass:
     https://github.com/kulikov0/whitelist-bypass
 
 - The relay binary (`librelay.so`, packaged under android/app/src/main/jniLibs)
-  is built from the project's `relay/` Go package and runs in
-  `telemost-headless-joiner` mode.
+  is built from the project's `relay/` Go package.
 - The Android process controller
-  (android/app/src/main/kotlin/com/hiddify/hiddify/TelemostRelayController.kt)
+  (android/app/src/main/kotlin/com/hiddify/hiddify/TunnelRelayController.kt)
   is adapted from the project's HeadlessRelayController.
 
 whitelist-bypass is distributed under the MIT License:
