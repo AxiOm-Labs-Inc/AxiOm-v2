@@ -21,10 +21,17 @@ class AccountSubscription with _$AccountSubscription {
 
   /// Whole days until expiry, or null when there's no expiry / it's unknown.
   /// Negative means already expired.
+  ///
+  /// Time already past is rounded away from zero: plain truncation reported a
+  /// subscription that died 12 hours ago as 0 — «last day» — which reads as
+  /// still alive. Time remaining keeps truncating, so half a day left is 0 and
+  /// really is the last day.
   int? get daysLeft {
     if (expireEpoch == null) return null;
     final expiry = DateTime.fromMillisecondsSinceEpoch(expireEpoch! * 1000, isUtc: true);
-    return expiry.difference(DateTime.now().toUtc()).inDays;
+    final diff = expiry.difference(DateTime.now().toUtc());
+    if (diff.isNegative) return -((-diff.inSeconds) / Duration.secondsPerDay).ceil();
+    return diff.inDays;
   }
 
   /// Human-readable traffic: "12.3 GB / 210 GB"
@@ -81,6 +88,22 @@ String? _parseExpire(dynamic raw) {
     return DateFormat('dd.MM.yyyy').format(date);
   }
   return null;
+}
+
+// ── API /me feature flags ───────────────────────────────────────────────────
+
+/// Top-level "features" object of GET /api/app/me. Not freezed — a plain
+/// value class is enough for a flat bool map.
+class AccountFeatures {
+  const AccountFeatures({this.telemost = false});
+
+  final bool telemost;
+}
+
+/// Parsed from /api/app/me response JSON; a missing/null object or flag
+/// maps to false (fail-closed).
+AccountFeatures parseFeatures(Map<String, dynamic>? json) {
+  return AccountFeatures(telemost: json?['telemost'] as bool? ?? false);
 }
 
 // ── Session (persisted in secure storage) ───────────────────────────────────

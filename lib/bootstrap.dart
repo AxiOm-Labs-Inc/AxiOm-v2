@@ -84,7 +84,6 @@ Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async
   // Start syncing the offline server list with the active profile right away.
   container.read(serverListCacheWatcherProvider);
   await _init("hiddify-core", () => container.read(hiddifyCoreServiceProvider).init());
-
   if (!kIsWeb) {
     // await _safeInit(
     //   "deep link service",

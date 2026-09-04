@@ -104,6 +104,12 @@ abstract class Preferences {
 
   static final storeReviewedByUser = PreferencesNotifier.create<bool, bool>("store_reviewed_by_user", false);
 
+  /// Cached copy of the /api/app/me "features.telemost" flag from the last
+  /// successful fetch — lets the Telemost gate survive app restarts / no
+  /// network until the session is restored.
+  static final telemostEntitled = PreferencesNotifier.create<bool, bool>("telemost_entitled", false);
+
+
   static final actionAtClose = PreferencesNotifier.create<ActionsAtClosing, String>(
     "action_at_close",
     ActionsAtClosing.ask,

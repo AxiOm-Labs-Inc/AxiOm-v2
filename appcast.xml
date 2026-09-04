@@ -6,63 +6,63 @@
             <title>Version 4.3.2</title>
             <pubDate>Mon, 31 Aug 2026 14:20:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.3.2/AxiOm-v4.3.2-arm64.apk"
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.3.2/AxiOm-v4.3.2-arm64.apk"
                 sparkle:version="4.3.2" sparkle:os="android" />
         </item>
         <item>
             <title>Version 4.3.1</title>
             <pubDate>Mon, 31 Aug 2026 13:55:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.3.1/AxiOm-v4.3.1-arm64.apk"
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.3.1/AxiOm-v4.3.1-arm64.apk"
                 sparkle:version="4.3.1" sparkle:os="android" />
         </item>
         <item>
             <title>Version 4.3.0</title>
             <pubDate>Mon, 31 Aug 2026 12:30:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.3.0/AxiOm-v4.3.0-arm64.apk"
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.3.0/AxiOm-v4.3.0-arm64.apk"
                 sparkle:version="4.3.0" sparkle:os="android" />
         </item>
         <item>
             <title>Version 4.2.1</title>
             <pubDate>Sun, 30 Aug 2026 18:00:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.2.1/AxiOm-v4.2.1-arm64.apk"
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.2.1/AxiOm-v4.2.1-arm64.apk"
                 sparkle:version="4.2.1" sparkle:os="android" />
         </item>
         <item>
             <title>Version 4.1.12</title>
             <pubDate>Wed, 15 Jul 2026 22:00:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.1.12/app-arm64-v8a-release.apk"
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.1.12/app-arm64-v8a-release.apk"
                 sparkle:version="4.1.12" sparkle:os="ios" />
         </item>
         <item>
             <title>Version 4.3.0</title>
             <pubDate>Mon, 31 Aug 2026 12:45:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.3.0/AxiOm-Windows-v4.3.0.zip"
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.3.0/AxiOm-Windows-v4.3.0.zip"
                 sparkle:version="4.3.0" sparkle:os="windows" />
         </item>
         <item>
             <title>Version 4.2.1</title>
             <pubDate>Sun, 30 Aug 2026 18:00:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.2.1/AxiOm-Windows-v4.2.1.zip"
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.2.1/AxiOm-Windows-v4.2.1.zip"
                 sparkle:version="4.2.1" sparkle:os="windows" />
         </item>
         <item>
             <title>Version 4.1.12</title>
             <pubDate>Wed, 15 Jul 2026 22:00:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.1.12/AxiOm-Windows-v4.1.12.zip"
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.1.12/AxiOm-Windows-v4.1.12.zip"
                 sparkle:version="4.1.12" sparkle:os="macos" />
         </item>
         <item>
             <title>Version 4.1.12</title>
             <pubDate>Wed, 15 Jul 2026 22:00:00 +0000</pubDate>
             <enclosure
-                url="https://github.com/arsenii-cmd/AxiOm-v2/releases/download/v4.1.12/AxiOm-Windows-v4.1.12.zip"
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.1.12/AxiOm-Windows-v4.1.12.zip"
                 sparkle:version="4.1.12" sparkle:os="linux" />
         </item>
     </channel>

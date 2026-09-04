@@ -203,7 +203,19 @@
         "networkError": "Нет соединения с сервером. Проверьте интернет и попробуйте снова.",
         "activeUntil": "до ${date}",
         "noActiveSub": "нет подписок",
-        "refreshed": "Обновлено"
+        "refreshed": "Обновлено",
+        "guestHint": "Привяжите Telegram, чтобы видеть тариф, дни и трафик. Купить подписку можно и без привязки.",
+        "connectTelegram": "Привязать Telegram",
+        "renew": "Продлить",
+        "renewOrBuy": "Продлить / купить",
+        "continuePayment": "Продолжить оплату",
+        "support": "Поддержка",
+        "pendingTitle": "Есть незавершённая оплата",
+        "pendingHint": "Нажмите, чтобы продолжить или отменить",
+        "daysLeftLabel": "Осталось ${days} дн.",
+        "oneDayLeft": "Остался 1 день",
+        "lastDay": "Последний день",
+        "expiredAgo": "Истекла ${days} дн. назад"
       }
     },
     "profileDetails": {

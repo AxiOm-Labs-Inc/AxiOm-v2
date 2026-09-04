@@ -200,7 +200,19 @@
         "networkError": "No connection to the server. Check your internet and try again.",
         "activeUntil": "until ${date}",
         "noActiveSub": "no subscriptions",
-        "refreshed": "Updated"
+        "refreshed": "Updated",
+        "guestHint": "Link Telegram to see your plan, days and traffic. You can buy a subscription without linking.",
+        "connectTelegram": "Link Telegram",
+        "renew": "Renew",
+        "renewOrBuy": "Renew / buy",
+        "continuePayment": "Continue payment",
+        "support": "Support",
+        "pendingTitle": "Unfinished payment",
+        "pendingHint": "Tap to continue or cancel",
+        "daysLeftLabel": "${days} days left",
+        "oneDayLeft": "1 day left",
+        "lastDay": "Last day",
+        "expiredAgo": "Expired ${days} days ago"
       }
     },
     "profileDetails": {

@@ -108,6 +108,18 @@ class AboutPage extends HookConsumerWidget {
             delegate: SliverChildListDelegate([
               ...conditionalTiles,
               if (conditionalTiles.isNotEmpty) const Divider(),
+              // Сайт первым: там тарифы, оплата и всё остальное, за чем сюда
+              // вообще заходят. Подписи у ссылок ниже — хардкод, как и весь
+              // AxiOm-блок этого экрана; заводить ключи перевода ради одной
+              // строки значило бы держать её в одиннадцати файлах локалей.
+              ListTile(
+                title: const Text('Сайт'),
+                subtitle: const Text('axiom.arcohouse.space', style: TextStyle(fontSize: 13)),
+                trailing: const Icon(FluentIcons.open_24_regular),
+                onTap: () async {
+                  await UriUtils.tryLaunch(Uri.parse(Constants.purchaseSiteUrl));
+                },
+              ),
               ListTile(
                 title: Text(t.pages.about.sourceCode),
                 trailing: const Icon(FluentIcons.open_24_regular),

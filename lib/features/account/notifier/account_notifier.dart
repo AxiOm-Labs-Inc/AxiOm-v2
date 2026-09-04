@@ -7,9 +7,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:fpdart/fpdart.dart';
 import 'package:hiddify/core/http_client/http_client_provider.dart';
 import 'package:hiddify/core/localization/translations.dart';
+import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/features/account/data/account_api.dart';
 import 'package:hiddify/features/account/model/account_models.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
+import 'package:hiddify/features/account/notifier/account_features_provider.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -47,6 +49,21 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
     await _secureStorage.delete(key: _sessionKey);
   }
 
+  // ── Feature flags (/api/app/me "features") ─────────────────────────────
+
+  /// Stores the freshly fetched flags in [accountFeaturesProvider] and
+  /// persists the telemost entitlement for offline/startup fallback.
+  void _updateFeatures(Map<String, dynamic> me) {
+    final features = parseFeatures(me['features'] as Map<String, dynamic>?);
+    ref.read(accountFeaturesProvider.notifier).state = features;
+    unawaited(ref.read(Preferences.telemostEntitled.notifier).update(features.telemost));
+  }
+
+  void _resetFeatures() {
+    ref.read(accountFeaturesProvider.notifier).state = const AccountFeatures();
+    unawaited(ref.read(Preferences.telemostEntitled.notifier).update(false));
+  }
+
   Future<void> _restoreSession() async {
     try {
       final raw = await _secureStorage.read(key: _sessionKey);
@@ -59,6 +76,7 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
       // Load fresh data
       final api = ref.read(accountApiProvider);
       final me = await api.getMe(session.sessionToken);
+      _updateFeatures(me);
       final subs = (me['subscriptions'] as List<dynamic>?)
               ?.map((s) => parseSubscription(s as Map<String, dynamic>))
               .toList() ??
@@ -71,6 +89,7 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
       // Token is dead (revoked/expired on the server) — drop it for good
       loggy.info('stored session is no longer valid, clearing');
       await _clearSession();
+      _resetFeatures();
       if (state is AccountStateRestoring) state = const AccountState.disconnected();
     } catch (e) {
       // Transient failure (network down, VPN not up yet, server hiccup):
@@ -189,6 +208,7 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
               createdAt: DateTime.now(),
             );
             await _saveSession(session);
+            _updateFeatures(me);
             final subs = (me['subscriptions'] as List<dynamic>?)
                     ?.map((s) => parseSubscription(s as Map<String, dynamic>))
                     .toList() ??
@@ -235,6 +255,7 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
     try {
       final api = ref.read(accountApiProvider);
       final me = await api.getMe(current.session.sessionToken);
+      _updateFeatures(me);
       final subs = (me['subscriptions'] as List<dynamic>?)
               ?.map((s) => parseSubscription(s as Map<String, dynamic>))
               .toList() ??
@@ -258,6 +279,7 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
       } catch (_) {}
     }
     await _clearSession();
+    _resetFeatures();
     state = const AccountState.disconnected();
   }
 
