@@ -1,128 +1,48 @@
-/// Settings for the WB Stream tunnel mode (whitelist-bypass relay running as
-/// wbstream-headless-joiner). Persisted in SharedPreferences by the notifier.
+/// Параметры вкладки Телемоста, хранимые в SharedPreferences нотифаером.
+///
+/// Раньше здесь жили параметры выбора комнаты — они переехали в нативную
+/// часть (relay находит комнату сам). Осталась только
+/// настройка видео-туннеля.
 class WbstreamSettings {
   const WbstreamSettings({
-    this.roomId = defaultRoomId,
-    this.displayName = 'AxiOm',
     this.vp8Fps = 60,
     this.vp8Batch = 18,
     this.dualTrack = true,
     this.reliable = false,
-    this.diskUrlA = defaultDiskUrlA,
-    this.diskUrlB = defaultDiskUrlB,
-    this.lastGoodSlot = '',
-    this.myRoomId = '',
-    this.myRoomExpiresAtMs = 0,
   });
 
-  /// Static WB Stream room: the keeper and the server-side creator hold it
-  /// open permanently, so the app needs no account, no on-demand room
-  /// creation — just the id. Empty by default (no built-in id in the
-  /// binary): the disk slots are the source, the settings' roomId is a
-  /// manual fallback.
-  static const defaultRoomId = '';
-
-  /// Default public Yandex.Disk links that serve the current room link
-  /// (A/B channel redundancy — both point at the same room; the NL keeper
-  /// rewrites the content when the room is re-created).
-  static const defaultDiskUrlA = 'https://yadi.sk/d/9HX4QTKcjXT8lA';
-  static const defaultDiskUrlB = 'https://yadi.sk/d/UiQyKVWgYARrkw';
-
-  /// WB Stream room id (UUID) the relay joins. Manual/built-in fallback.
-  final String roomId;
-
-  /// Public Yandex.Disk links (files whose content is the room link).
-  final String diskUrlA;
-  final String diskUrlB;
-
-  /// 'A' or 'B' — the slot that connected last time (tried first).
-  /// Empty when neither has succeeded yet. Not user-editable.
-  final String lastGoodSlot;
-
-  /// The room this device is currently using. Rooms are one per user now: the
-  /// server hands one out, we keep coming back to it while it lives, and only
-  /// then ask a slot for a new one. Held shorter than the server holds the room
-  /// (35 min) so we never return to a room that has already been closed.
-  final String myRoomId;
-  final int myRoomExpiresAtMs;
-
-  static const myRoomTtl = Duration(minutes: 25);
-
-  /// True while [myRoomId] is set and still worth trying.
-  bool get hasFreshRoom =>
-      myRoomId.isNotEmpty &&
-      DateTime.now().millisecondsSinceEpoch < myRoomExpiresAtMs;
-
-  /// Name shown in the call.
-  final String displayName;
-
-  /// VP8 data tunnel parameters (60 fps / batch 18 measured best on-device:
-  /// ~7.8/3.6 Mbps, 0% loss; the old 12/8 combo caps at ~1 Mbps).
+  /// Параметры VP8-туннеля (60 fps / batch 18 — измеренный оптимум на
+  /// устройстве: ~7.8/3.6 Мбит/с, 0% потерь; старые 12/8 упирались в ~1 Мбит/с).
   final int vp8Fps;
   final int vp8Batch;
   final bool dualTrack;
   final bool reliable;
 
   WbstreamSettings copyWith({
-    String? roomId,
-    String? displayName,
     int? vp8Fps,
     int? vp8Batch,
     bool? dualTrack,
     bool? reliable,
-    String? diskUrlA,
-    String? diskUrlB,
-    String? lastGoodSlot,
-    String? myRoomId,
-    int? myRoomExpiresAtMs,
   }) =>
       WbstreamSettings(
-        roomId: roomId ?? this.roomId,
-        displayName: displayName ?? this.displayName,
         vp8Fps: vp8Fps ?? this.vp8Fps,
         vp8Batch: vp8Batch ?? this.vp8Batch,
         dualTrack: dualTrack ?? this.dualTrack,
         reliable: reliable ?? this.reliable,
-        diskUrlA: diskUrlA ?? this.diskUrlA,
-        diskUrlB: diskUrlB ?? this.diskUrlB,
-        lastGoodSlot: lastGoodSlot ?? this.lastGoodSlot,
-        myRoomId: myRoomId ?? this.myRoomId,
-        myRoomExpiresAtMs: myRoomExpiresAtMs ?? this.myRoomExpiresAtMs,
       );
 
-  /// True for a well-formed UUID room id.
-  static bool isValidRoomId(String roomId) {
-    return RegExp(
-      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-    ).hasMatch(roomId.trim());
-  }
-
   Map<String, dynamic> toJson() => {
-        'roomId': roomId,
-        'displayName': displayName,
         'vp8Fps': vp8Fps,
         'vp8Batch': vp8Batch,
         'dualTrack': dualTrack,
         'reliable': reliable,
-        'diskUrlA': diskUrlA,
-        'diskUrlB': diskUrlB,
-        'lastGoodSlot': lastGoodSlot,
-        'myRoomId': myRoomId,
-        'myRoomExpiresAtMs': myRoomExpiresAtMs,
       };
 
   factory WbstreamSettings.fromJson(Map<String, dynamic> json) => WbstreamSettings(
-        roomId: json['roomId'] as String? ?? defaultRoomId,
-        displayName: json['displayName'] as String? ?? 'AxiOm',
         vp8Fps: (json['vp8Fps'] as num?)?.toInt() ?? 60,
         vp8Batch: (json['vp8Batch'] as num?)?.toInt() ?? 18,
         dualTrack: json['dualTrack'] as bool? ?? true,
         reliable: json['reliable'] as bool? ?? false,
-        myRoomId: json['myRoomId'] as String? ?? '',
-        myRoomExpiresAtMs: (json['myRoomExpiresAtMs'] as num?)?.toInt() ?? 0,
-        diskUrlA: json['diskUrlA'] as String? ?? defaultDiskUrlA,
-        diskUrlB: json['diskUrlB'] as String? ?? defaultDiskUrlB,
-        lastGoodSlot: json['lastGoodSlot'] as String? ?? '',
       );
 }
 
@@ -148,7 +68,7 @@ class WbstreamSocks {
       );
 }
 
-/// State machine for the WB Stream tunnel mode (plain Dart, no codegen).
+/// State machine for the Telemost tunnel mode (plain Dart, no codegen).
 sealed class WbstreamTunnelState {
   const WbstreamTunnelState();
 }

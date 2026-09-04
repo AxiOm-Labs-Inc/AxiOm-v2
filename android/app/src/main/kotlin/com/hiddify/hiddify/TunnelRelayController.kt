@@ -16,14 +16,14 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Controls the librelay.so process (whitelist-bypass relay, MIT) running in
- * `wbstream-headless-joiner` mode: spawns it from nativeLibraryDir, feeds the
+ * `axiom-tunnel` mode: spawns it from nativeLibraryDir, feeds the
  * JOIN command over stdin, parses STATUS/RESOLVE lines from stdout.
  *
  * Adapted from TelemostRelayController (same protocol, WB Stream room).
  * Status strings emitted to Flutter: starting/connecting/connected/lost/
  * error(message)/stopped.
  */
-class WBStreamRelayController(
+class TunnelRelayController(
     private val appContext: Context,
     private val nativeLibDir: String,
     private val onStatus: (status: String, message: String?) -> Unit,
@@ -70,7 +70,7 @@ class WBStreamRelayController(
             try {
                 val processBuilder = ProcessBuilder(
                     relayBin.absolutePath,
-                    "--mode", "wbstream-headless-joiner",
+                    "--mode", "axiom-tunnel",
                     "--ws-port", "$signalingPort",
                     "--socks-host", params.host,
                     "--socks-port", "${params.port}",
@@ -86,11 +86,12 @@ class WBStreamRelayController(
                     pendingCommands.clear()
                 }
                 writeStdin("JOIN:$joinJson")
-                onLog("wbstream relay started (signaling :$signalingPort, socks5 ${params.host}:${params.port})")
+                onLog("tunnel relay started (signaling :$signalingPort, socks5 ${params.host}:${params.port})")
 
                 proc.inputStream.bufferedReader().forEachLine { line ->
                     when {
                         line.startsWith("RESOLVE:") -> resolveAndReply(line.removePrefix("RESOLVE:"))
+                        line.startsWith("STATUS:CONFIG:") -> onStatus("config", line.removePrefix("STATUS:CONFIG:"))
                         line.startsWith("STATUS:") -> handleStatus(line.removePrefix("STATUS:"))
                         else -> {
                             Log.d(TAG, line)
@@ -99,14 +100,14 @@ class WBStreamRelayController(
                     }
                 }
                 proc.waitFor()
-                Log.d(TAG, "wbstream relay exited: ${proc.exitValue()}")
+                Log.d(TAG, "tunnel relay exited: ${proc.exitValue()}")
                 if (isRunning) {
                     isRunning = false
                     onStatus("error", "процесс relay завершился (код ${proc.exitValue()})")
                 }
             } catch (e: Exception) {
                 if (isRunning) {
-                    Log.e(TAG, "wbstream relay error", e)
+                    Log.e(TAG, "tunnel relay error", e)
                     isRunning = false
                     onStatus("error", e.message ?: "relay error")
                 }
@@ -173,14 +174,14 @@ class WBStreamRelayController(
     private fun acquireLocks() {
         try {
             val pm = appContext.getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "axiom:wbstream")
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "axiom:tunnel")
                 .apply { acquire() }
         } catch (e: Exception) {
             Log.w(TAG, "wake lock acquire failed", e)
         }
         try {
             val wm = appContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "axiom:wbstream")
+            wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "axiom:tunnel")
                 .apply { acquire() }
         } catch (e: Exception) {
             Log.w(TAG, "wifi lock acquire failed", e)
@@ -213,6 +214,6 @@ class WBStreamRelayController(
     private fun freePort(): Int = ServerSocket(0).use { it.localPort }
 
     companion object {
-        const val TAG = "A/WBStreamRelay"
+        const val TAG = "A/TunnelRelay"
     }
 }

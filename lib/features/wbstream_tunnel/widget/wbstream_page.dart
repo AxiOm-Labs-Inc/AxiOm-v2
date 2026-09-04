@@ -19,7 +19,7 @@ import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// The «AxiOm Telemost» tab: tunnel connect/disconnect through the static
-/// WB Stream room (stream.wb.ru) held open server-side. No accounts, no
+/// conference room held open server-side. No accounts, no
 /// manual links — just the room id and the relay tuning knobs.
 class WbstreamPage extends HookConsumerWidget with PresLogger {
   const WbstreamPage({super.key});
@@ -73,7 +73,6 @@ class WbstreamPage extends HookConsumerWidget with PresLogger {
     final busyTunnel = useState(false);
 
     // Relay parameter fields.
-    final roomIdController = useTextEditingController(text: initial.roomId);
     final fpsController = useTextEditingController(text: '${initial.vp8Fps}');
     final batchController = useTextEditingController(text: '${initial.vp8Batch}');
     final dualTrack = useState(initial.dualTrack);
@@ -236,22 +235,6 @@ class WbstreamPage extends HookConsumerWidget with PresLogger {
                         ),
                       ),
                     ],
-                  ),
-                  const Gap(12),
-                  TextField(
-                    controller: roomIdController,
-                    autocorrect: false,
-                    keyboardType: TextInputType.text,
-                    decoration: const InputDecoration(
-                      labelText: 'ID конференции (необязательно)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) {
-                      final roomId = value.trim();
-                      if (roomId.isEmpty || WbstreamSettings.isValidRoomId(roomId)) {
-                        save((s) => s.copyWith(roomId: roomId));
-                      }
-                    },
                   ),
                   const Gap(12),
                   Row(

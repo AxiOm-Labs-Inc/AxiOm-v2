@@ -6,11 +6,10 @@ import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/core/preferences/preferences_provider.dart';
 import 'package:hiddify/features/connection/data/connection_data_providers.dart';
 import 'package:hiddify/features/connection/model/core_owner.dart';
+import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/settings/data/battery_optimization_repository.dart';
 import 'package:hiddify/features/settings/data/config_option_repository.dart';
 import 'package:hiddify/features/wbstream_tunnel/data/telemost_credentials_service.dart';
-import 'package:hiddify/features/wbstream_tunnel/data/wbstream_config_service.dart';
-import 'package:hiddify/features/wbstream_tunnel/data/wbstream_link_provider.dart';
 import 'package:hiddify/features/wbstream_tunnel/data/wbstream_relay_service.dart';
 import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
 import 'package:hiddify/utils/utils.dart';
@@ -23,7 +22,7 @@ final wbstreamTunnelNotifierProvider =
 
 // v2: the v1 key persisted the built-in room id into SharedPreferences on
 // early installs; bumping the key drops that saved value (the new default is
-// an empty field — rooms resolve via the disk slots).
+// an empty field — the native relay resolves everything).
 const _settingsKey = 'wbstream_settings_v2';
 
 /// How long to wait for STATUS:TUNNEL_CONNECTED after starting the relay.
@@ -31,18 +30,8 @@ const _settingsKey = 'wbstream_settings_v2';
 /// there is no spawn window to cover — 90s is ample.
 const _connectTimeout = Duration(seconds: 90);
 
-/// Total budget for the post-connect data-flow probe (SOCKS5 round-trip
-/// through the tunnel). With the always-on creator the first attempt usually
-/// succeeds; the budget covers a slow first join.
-const _probeBudget = Duration(seconds: 45);
-
-/// Timeout of a single probe attempt and pause between attempts.
+/// Timeout of a single probe attempt (watchdog full-path probe).
 const _probeAttemptTimeout = Duration(seconds: 5);
-const _probeRetryDelay = Duration(seconds: 4);
-
-/// Probe target: any HTTP response from it proves bidirectional data flow
-/// through the tunnel. Plain HTTP on port 80 — a redirect is good enough.
-const _probeHost = 'stream.wb.ru';
 
 /// Watchdog full-path probe target. MUST be a host that is unreachable
 /// directly under whitelists: a probe through the core has to prove the
@@ -53,7 +42,7 @@ const _watchdogProbePath = '/generate_204';
 
 /// Watchdog: while connected, the tunnel is probed every [_watchdogInterval];
 /// two consecutive failures trigger a relay restart. Catches the uplink-only
-/// SFU slot kill, which the native joiner does not reliably notice (its
+/// uplink slot kill, which the native relay does not reliably notice (its
 /// downlink keeps receiving keepalives, so the tunnel looks alive).
 const _watchdogInterval = Duration(seconds: 12);
 
@@ -91,9 +80,14 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
 
   /// Причина последнего отказа держателя (`auth_denied:<reason>`) и признак
   /// того, что секрет за эту активацию уже обновляли — иначе `unknown_uid`
-  /// зациклил бы обход кандидатов на запросах к RU.
+  /// зациклил бы перезапуск relay на запросах к RU.
   String? _lastDenyReason;
   bool _credentialsRefreshed = false;
+
+  /// Готовый фрагмент конфига sing-box, присланный relay событием `config`.
+  /// Комнату находит нативная часть, приложение её не знает — только пишет
+  /// этот конфиг в файл и передаёт ядру.
+  String? _coreConfig;
 
   /// True once the data-flow probe has passed for the running relay. Gates
   /// status handling: only a verified tunnel may show WbstreamConnected/
@@ -123,7 +117,6 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
 
   /// Room the relay is currently bound to. The WG identity is derived from it,
   /// so the core config must be rebuilt whenever the room changes.
-  String _activeRoom = '';
 
   WbstreamRelayService get _service => _ref.read(wbstreamRelayServiceProvider);
 
@@ -170,106 +163,31 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     state = const WbstreamStarting();
     _credentialsRefreshed = false;
     // Секрет берётся один раз за активацию: держателю он не отдаётся, из него
-    // считается одноразовое доказательство на каждую комнату.
+    // считается одноразовое доказательство. Дальше комнату находит relay сам.
     _tmSecret = await _ref.read(telemostCredentialsServiceProvider).secret();
-    final roomId = await _connectToAnyRoom();
-    if (roomId == null) {
-      if (state is! WbstreamError) {
-        state = const WbstreamError('Не удалось подключиться к конференции');
-      }
-      return false;
-    }
-    return true;
-  }
 
-  /// The rooms worth trying, in order: the one this device already holds (the
-  /// server keeps it alive for a while after a disconnect, so returning costs
-  /// nothing and consumes no free room), then each disk slot, which always
-  /// advertises an unoccupied room. Slots are read live — the head republishes
-  /// them the moment a room is taken, so nothing here may be cached.
-  ///
-  /// Each entry is (roomId, slot); slot is null for our own room.
-  Future<List<(String, String?)>> _roomCandidates() async {
-    final out = <(String, String?)>[];
-    if (_settings.hasFreshRoom) {
-      out.add((_settings.myRoomId, null));
-    }
-    final provider = _ref.read(wbstreamLinkProviderProvider);
-    final slots = _settings.lastGoodSlot == 'B'
-        ? [('B', _settings.diskUrlB), ('A', _settings.diskUrlA)]
-        : [('A', _settings.diskUrlA), ('B', _settings.diskUrlB)];
-    for (final (slot, url) in slots) {
-      if (url.trim().isEmpty) continue;
-      final roomId = await provider.fetchRoomId(url);
-      if (roomId != null && !out.any((c) => c.$1 == roomId)) {
-        loggy.info('wbstream: slot $slot offers room $roomId');
-        out.add((roomId, slot));
-      }
-    }
-    final manual = _settings.roomId.trim();
-    if (out.isEmpty && WbstreamSettings.isValidRoomId(manual)) {
-      out.add((manual, null));
-    }
-    return out;
-  }
+    _lastDenyReason = null;
+    if (await _attemptConnect()) return true;
+    await _service.stop();
 
-  /// Remembers the room we got into, so a reconnect goes straight back to it
-  /// instead of taking another free room out of a slot.
-  Future<void> _rememberRoom(String roomId, String? slot) async {
-    await saveSettings(_settings.copyWith(
-      myRoomId: roomId,
-      myRoomExpiresAtMs:
-          DateTime.now().add(WbstreamSettings.myRoomTtl).millisecondsSinceEpoch,
-      lastGoodSlot: slot ?? _settings.lastGoodSlot,
-    ));
-  }
-
-  Future<void> _forgetRoom() async {
-    if (_settings.myRoomId.isEmpty) return;
-    await saveSettings(_settings.copyWith(myRoomId: '', myRoomExpiresAtMs: 0));
-  }
-
-  /// Walks the candidates until one carries real traffic. A room can legitimately
-  /// fail — ours may have been closed, a slot's room may have just been taken by
-  /// somebody else — and the next candidate is the cure, so failure here is not
-  /// an error yet.
-  Future<String?> _connectToAnyRoom() async {
-    final candidates = await _roomCandidates();
-    if (candidates.isEmpty) return null;
-    for (final (roomId, slot) in candidates) {
-      if (!WbstreamSettings.isValidRoomId(roomId)) continue;
-      loggy.info('wbstream: trying room $roomId (slot ${slot ?? "own"})');
+    // Держатель не опознал секрет (на сервере подняли поколение) — обновляем
+    // и перезапускаем relay один раз.
+    if (_lastDenyReason == 'unknown_uid' && !_credentialsRefreshed) {
+      _credentialsRefreshed = true;
+      _tmSecret = await _ref
+          .read(telemostCredentialsServiceProvider)
+          .secret(forceRefresh: true);
       _lastDenyReason = null;
-      if (await _startAndWait(roomId, _connectTimeout)) {
-        await _rememberRoom(roomId, slot);
-        return roomId;
-      }
+      if (await _attemptConnect()) return true;
       await _service.stop();
-      final deny = _lastDenyReason;
-      if (deny == null) continue;
-      // Держатель нас не опознал: на сервере подняли поколение секрета
-      // (отзыв доступа) — обновляем и пробуем ту же комнату ещё раз.
-      if (deny == 'unknown_uid' && !_credentialsRefreshed) {
-        _credentialsRefreshed = true;
-        _tmSecret = await _ref
-            .read(telemostCredentialsServiceProvider)
-            .secret(forceRefresh: true);
-        _lastDenyReason = null;
-        if (await _startAndWait(roomId, _connectTimeout)) {
-          await _rememberRoom(roomId, slot);
-          return roomId;
-        }
-        await _service.stop();
-      }
-      // Отказ по существу одинаков во всех комнатах — обходить их незачем.
-      if (_isTerminalDeny(_lastDenyReason)) {
-        state = WbstreamError(_denyMessage(_lastDenyReason!));
-        await _forgetRoom();
-        return null;
-      }
     }
-    await _forgetRoom();
-    return null;
+    // Отказ по существу — показать причину; иначе общая ошибка.
+    if (_isTerminalDeny(_lastDenyReason)) {
+      state = WbstreamError(_denyMessage(_lastDenyReason!));
+    } else if (state is! WbstreamError) {
+      state = const WbstreamError('Не удалось подключиться к конференции');
+    }
+    return false;
   }
 
   /// Asks once per install for the battery-optimization exemption. Without
@@ -291,35 +209,33 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     }
   }
 
-  /// Starts the relay with [roomId] and waits for STATUS:TUNNEL_CONNECTED up
-  /// to [timeout], then verifies real data flow through the tunnel's local
-  /// SOCKS5 (the relay reports "connected" right after joining the room —
-  /// without the probe a dead room could look connected). [WbstreamConnected]
-  /// is set only after the probe passes. On failure the caller is
-  /// responsible for stopping.
-  Future<bool> _startAndWait(String roomId, Duration timeout) async {
-    _activeRoom = roomId;
+  /// Запускает relay и ждёт STATUS:TUNNEL_CONNECTED. Комнату relay находит и
+  /// пробит сам (нативная часть), поэтому 'connected' уже означает живой
+  /// туннель — отдельной Dart-пробы здесь больше нет. Вместе с 'connected'
+  /// приходит событие `config` с фрагментом для ядра; ждём и его.
+  Future<bool> _attemptConnect() async {
     _tunnelVerified = false;
+    _coreConfig = null;
     _attemptCompleter = Completer<bool>();
     try {
-      _socks = await _service.start(
-        _settings.copyWith(roomId: roomId),
-        tmSecret: _tmSecret,
-      );
+      _socks = await _service.start(_settings, tmSecret: _tmSecret);
     } catch (e) {
-      loggy.warning('wbstream: start failed: $e');
+      loggy.warning('tunnel: start failed: $e');
       state = WbstreamError('Не удалось запустить relay: $e');
       return false;
     }
     final joined = await _attemptCompleter!.future.timeout(
-      timeout,
+      _connectTimeout,
       onTimeout: () {
-        loggy.warning('wbstream: connect timeout (${timeout.inSeconds}s)');
+        loggy.warning('tunnel: connect timeout (${_connectTimeout.inSeconds}s)');
         return false;
       },
     );
     if (!joined) return false;
-    if (!await _probeTunnel()) return false;
+    if (_coreConfig == null) {
+      loggy.warning('tunnel: connected but no config received');
+      return false;
+    }
     final socks = _socks;
     _tunnelVerified = true;
     if (socks != null) state = WbstreamConnected(socks);
@@ -451,11 +367,11 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     _watchdogFailures = 0;
     _lastWatchdogRestart = DateTime.now();
     try {
-      loggy.warning('wbstream: watchdog restarting relay (tunnel silent)');
+      loggy.warning('tunnel: watchdog restarting relay (tunnel silent)');
       await _service.stop();
-      // Full candidate walk rather than a plain retry: the silence may be our
-      // room having been closed, and then only another room can help.
-      final ok = await _connectToAnyRoom() != null;
+      // Relay сам заново обойдёт комнаты: молчание могло значить, что наша
+      // комната закрыта, и тогда поможет только другая.
+      final ok = await _attemptConnect();
       if (!ok) {
         loggy.warning('wbstream: watchdog restart failed');
         await _service.stop();
@@ -477,35 +393,11 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     }
   }
 
-  // ── Data-flow probe ────────────────────────────────────────────────────
-
-  /// Retries a SOCKS5 round-trip through the tunnel until one succeeds or
-  /// [_probeBudget] runs out. The state stays WbstreamConnecting while this
-  /// runs — the UI must not show «connected» before real data flows.
-  Future<bool> _probeTunnel() async {
-    final socks = _socks;
-    if (socks == null) return false;
-    final sw = Stopwatch()..start();
-    var attempt = 0;
-    while (true) {
-      attempt++;
-      if (await _probeOnce(socks)) {
-        loggy.info('wbstream: data-flow probe OK on attempt $attempt (${sw.elapsed.inSeconds}s)');
-        return true;
-      }
-      final remaining = _probeBudget - sw.elapsed - _probeRetryDelay;
-      if (remaining <= Duration.zero) break;
-      await Future<void>.delayed(remaining < _probeRetryDelay ? remaining : _probeRetryDelay);
-    }
-    loggy.warning('wbstream: data-flow probe failed after $attempt attempts (${sw.elapsed.inSeconds}s) — creator down?');
-    return false;
-  }
-
   /// One SOCKS5 round-trip: handshake (user/pass auth when the server picks
   /// it), CONNECT to [host]:80, then a HEAD request — any response
   /// bytes prove the tunnel actually carries data. Raw dart:io Socket, no
   /// proxy-adapter dependency.
-  Future<bool> _probeOnce(WbstreamSocks socks, {String host = _probeHost, String path = '/'}) async {
+  Future<bool> _probeOnce(WbstreamSocks socks, {required String host, String path = '/'}) async {
     Socket? socket;
     _ByteReader? reader;
     try {
@@ -589,19 +481,36 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     _ref.read(coreOwnerProvider.notifier).state = CoreOwner.none;
   }
 
+  /// Имя сессии ядра в системном уведомлении. Профиль в списке не создаётся —
+  /// туннель отдельный сервис, не подписка.
+  static const _profileName = 'AxiOm Telemost';
+
+  /// Пишет присланный relay фрагмент конфига в отдельный файл (в обход стора
+  /// профилей) и возвращает его.
+  Future<File?> _writeCoreConfig(String content) async {
+    try {
+      final file = _ref.read(profilePathResolverProvider).file('wbstream');
+      await file.parent.create(recursive: true);
+      await file.writeAsString(content, flush: true);
+      return file;
+    } catch (e) {
+      loggy.warning('tunnel: failed to write core config: $e');
+      return null;
+    }
+  }
+
   Future<bool> _tryStartCore(WbstreamConnected current) async {
-    if (_activeRoom.isEmpty) {
-      loggy.warning('wbstream: no active room, cannot build the core config');
+    final cfg = _coreConfig;
+    if (cfg == null || cfg.isEmpty) {
+      loggy.warning('tunnel: no config from relay, cannot start the core');
       return false;
     }
-    final file = await _ref
-        .read(wbstreamConfigServiceProvider)
-        .writeConfig(current.socks, _activeRoom);
+    final file = await _writeCoreConfig(cfg);
     if (file == null) return false;
     _ref.read(coreOwnerProvider.notifier).state = CoreOwner.wbstream;
     final result = await _ref
         .read(connectionRepositoryProvider)
-        .connectConfig(file.path, wbstreamProfileName, _ref.read(Preferences.disableMemoryLimit))
+        .connectConfig(file.path, _profileName, _ref.read(Preferences.disableMemoryLimit))
         .run();
     return result.match(
       (failure) {
@@ -674,11 +583,14 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
         if (state is! WbstreamConnected) state = const WbstreamStarting();
       case 'connecting':
         if (state is! WbstreamConnected) state = const WbstreamConnecting();
+      case 'config':
+        // Relay нашёл комнату и прислал готовый фрагмент конфига ядра. Комнату
+        // приложение не знает — только пишет этот конфиг в файл.
+        _coreConfig = event.message;
       case 'connected':
-        // The relay reports "connected" right after joining the room. The
-        // first signal of an attempt only unblocks _startAndWait, which runs
-        // the data-flow probe and sets WbstreamConnected itself once the
-        // probe passes. Every later signal (the SFU reconnect cycle emits
+        // Relay сообщает "connected", уже проверив поток данных сам. Первый
+        // сигнал попытки разблокирует _attemptConnect, который и ставит
+        // WbstreamConnected. Every later signal (the SFU reconnect cycle emits
         // connected → lost → connecting → connected) restores
         // WbstreamConnected — but only for a probe-verified tunnel, and
         // from ANY state: after 'lost' the state is WbstreamConnecting by

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:hiddify/features/wbstream_tunnel/model/display_names.dart';
 import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -10,31 +9,29 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 class WbstreamStatusEvent {
   const WbstreamStatusEvent(this.status, {this.message});
 
-  /// starting | connecting | connected | lost | error | stopped
+  /// starting | connecting | connected | lost | error | stopped | config
+  ///
+  /// `config` несёт в [message] готовый фрагмент конфига sing-box: нативная
+  /// часть находит комнату сама и отдаёт конфиг строкой, приложение пишет его
+  /// в файл не заглядывая внутрь.
   final String status;
   final String? message;
 }
 
-/// Dart wrapper over MethodChannel `com.hiddify.app/wbstream` and the
-/// matching EventChannel (see WBStreamMethodHandler.kt).
+/// Dart-обёртка над MethodChannel `com.hiddify.app/tunnel` и парным
+/// EventChannel (см. TunnelMethodHandler.kt). Комнату и сборку
+/// конфига делает нативный relay; приложение шлёт только секрет и параметры
+/// видео и получает статусы (включая готовый конфиг).
 class WbstreamRelayService with InfraLogger {
-  static const _channel = MethodChannel('com.hiddify.app/wbstream');
-  static const _statusChannel = EventChannel('com.hiddify.app/wbstream.status');
+  static const _channel = MethodChannel('com.hiddify.app/tunnel');
+  static const _statusChannel = EventChannel('com.hiddify.app/tunnel.status');
 
-  /// Starts the relay process. Returns the local SOCKS5 endpoint generated
-  /// natively; tunnel progress arrives over [watchStatus]. The conference
-  /// display name is picked at random from a fixed pool on every start
-  /// (same neutral-name pool as the Telemost mode).
-  /// [tmSecret] — секрет Телемоста аккаунта (hex). Пусто = подключение без
-  /// авторизации: пока держатели не переведены в strict, это рабочий путь.
-  ///
-  /// Режим клиента всегда soft: рукопожатие он проходит целиком и ключ
-  /// переключает, но своих кадров не гейтит. Так одна и та же сборка работает
-  /// и со старым держателем, и со strict — гейт всё равно стоит на держателе.
+  /// Запускает relay. [tmSecret] — секрет Телемоста аккаунта (hex); пусто =
+  /// подключение без авторизации, пока держатели не в strict. Возвращает
+  /// локальный SOCKS5-эндпойнт; дальнейший прогресс — через [watchStatus],
+  /// в т.ч. событие `config` с фрагментом для ядра.
   Future<WbstreamSocks> start(WbstreamSettings settings, {String? tmSecret}) async {
     final res = await _channel.invokeMethod<Map<dynamic, dynamic>>('start', {
-      'roomId': settings.roomId,
-      'displayName': randomTelemostDisplayName(),
       'vp8Fps': settings.vp8Fps,
       'vp8Batch': settings.vp8Batch,
       'dualTrack': settings.dualTrack,
@@ -44,7 +41,7 @@ class WbstreamRelayService with InfraLogger {
         'authMode': 'soft',
       },
     });
-    if (res == null) throw Exception('wbstream start: empty response');
+    if (res == null) throw Exception('tunnel start: empty response');
     return WbstreamSocks.fromMap(res);
   }
 
@@ -52,7 +49,7 @@ class WbstreamRelayService with InfraLogger {
     try {
       await _channel.invokeMethod('stop');
     } catch (e) {
-      loggy.warning('wbstream stop failed (ignoring): $e');
+      loggy.warning('tunnel stop failed (ignoring): $e');
     }
   }
 

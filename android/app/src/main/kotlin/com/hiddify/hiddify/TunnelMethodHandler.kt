@@ -9,35 +9,37 @@ import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
 
 /**
- * MethodChannel `com.hiddify.app/wbstream` + EventChannel
- * `com.hiddify.app/wbstream.status` for the WB Stream tunnel mode
- * (features/wbstream_tunnel on the Dart side).
+ * MethodChannel `com.hiddify.app/tunnel` + EventChannel
+ * `com.hiddify.app/tunnel.status` for the Telemost tunnel mode
+ * (features/telemost on the Dart side).
  *
- * start(roomId, displayName, vp8Fps, vp8Batch, dualTrack, reliable,
+ * start(displayName, vp8Fps, vp8Batch, dualTrack, reliable,
  *       tmSecret?, authMode?)
  *   → starts librelay.so and returns the local SOCKS5 endpoint as
  *     {host, port, user, pass} (generated per start).
  * stop() → stops the relay process.
  * Status events: {status: starting|connecting|connected|lost|error|stopped, message: String?}
  */
-class WBStreamMethodHandler : FlutterPlugin, MethodChannel.MethodCallHandler {
+class TunnelMethodHandler : FlutterPlugin, MethodChannel.MethodCallHandler {
     private var channel: MethodChannel? = null
     private var statusChannel: EventChannel? = null
     private var eventSink: EventChannel.EventSink? = null
-    private var controller: WBStreamRelayController? = null
+    private var controller: TunnelRelayController? = null
+    private var appContext: android.content.Context? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
-        const val CHANNEL = "com.hiddify.app/wbstream"
-        const val STATUS_CHANNEL = "com.hiddify.app/wbstream.status"
+        const val CHANNEL = "com.hiddify.app/tunnel"
+        const val STATUS_CHANNEL = "com.hiddify.app/tunnel.status"
     }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        controller = WBStreamRelayController(
+        appContext = binding.applicationContext
+        controller = TunnelRelayController(
             appContext = binding.applicationContext,
             nativeLibDir = binding.applicationContext.applicationInfo.nativeLibraryDir,
             onStatus = { status, message -> emitStatus(status, message) },
-            onLog = { line -> android.util.Log.d(WBStreamRelayController.TAG, line) },
+            onLog = { line -> android.util.Log.d(TunnelRelayController.TAG, line) },
         )
         channel = MethodChannel(binding.binaryMessenger, CHANNEL)
         channel!!.setMethodCallHandler(this)
@@ -64,23 +66,23 @@ class WBStreamMethodHandler : FlutterPlugin, MethodChannel.MethodCallHandler {
         when (call.method) {
             "start" -> {
                 val args = call.arguments as? Map<*, *>
-                val roomId = args?.get("roomId") as? String
-                if (roomId.isNullOrBlank()) {
-                    result.error("BAD_ARGS", "roomId is required", null)
-                    return
-                }
+                // roomId, адреса Диска и ключ слота больше не приходят из
+                // приложения — relay находит комнату сам. Приложение шлёт только
+                // секрет, режим авторизации и параметры видео.
                 val joinJson = JSONObject().apply {
-                    put("roomId", roomId)
-                    put("displayName", (args["displayName"] as? String).orEmpty())
+                    put("displayName", (args?.get("displayName") as? String).orEmpty())
                     put("tunnelMode", "video")
-                    put("vp8Fps", (args["vp8Fps"] as? Number)?.toInt() ?: 24)
-                    put("vp8Batch", (args["vp8Batch"] as? Number)?.toInt() ?: 8)
-                    put("dualTrack", args["dualTrack"] as? Boolean ?: false)
-                    put("reliable", args["reliable"] as? Boolean ?: false)
-                    // Секрет Телемоста и режим авторизации. Отсутствуют —
-                    // relay ведёт себя как раньше, без рукопожатия.
-                    (args["tmSecret"] as? String)?.let { put("tmSecret", it) }
-                    (args["authMode"] as? String)?.let { put("authMode", it) }
+                    put("vp8Fps", (args?.get("vp8Fps") as? Number)?.toInt() ?: 24)
+                    put("vp8Batch", (args?.get("vp8Batch") as? Number)?.toInt() ?: 8)
+                    put("dualTrack", args?.get("dualTrack") as? Boolean ?: false)
+                    put("reliable", args?.get("reliable") as? Boolean ?: false)
+                    // Память своей комнаты relay пишет в файл рядом с данными
+                    // приложения (переехала из SharedPreferences).
+                    put("statePath", java.io.File(appContext!!.filesDir, "axiom_tunnel_room.json").absolutePath)
+                    // Секрет Телемоста и режим авторизации. Пусто — relay идёт
+                    // без рукопожатия.
+                    (args?.get("tmSecret") as? String)?.let { put("tmSecret", it) }
+                    (args?.get("authMode") as? String)?.let { put("authMode", it) }
                 }.toString()
                 try {
                     val socks = controller!!.start(joinJson)
