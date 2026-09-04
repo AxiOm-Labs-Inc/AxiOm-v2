@@ -1,15 +1,20 @@
-# Hiddify Extended GNU General Public License v3
+# AxiOm Extended GNU General Public License v3
 
-The Hiddify project is licensed under GPL v3, with the following additional conditions in accordance with GPL v3 Section 7. Failure to comply with these terms may result in requests to app stores to remove or restrict access to your app.
+The AxiOm project is licensed under GPL v3, with the following additional conditions in accordance with GPL v3 Section 7. Failure to comply with these terms may result in requests to app stores to remove or restrict access to your app.
 
 # Additional Conditions to GPL v3:
-1.	**Source Code Availability:** If you use any part of this code, you must publish your source code on GitHub as a fork of the Hiddify repository and keep it up-to-date with any published app releases. Your repository should be shown as a fork of  https://github.com/hiddify/hiddify-app .
+1.	**Source Code Availability:** If you use any part of the **public** AxiOm source tree, you must publish your source code on GitHub and keep it up-to-date with any published app releases **built from that same public tree**. The public repository is the Canonical open-source Program.
 2.	**Automated Release:** All releases must be made using GitHub Actions.
-3.	**Attribution:** You must give appropriate credit to Hiddify and https://github.com/hiddify/hiddify-app, link to the original license, and document any changes you have made in Readme.
+3.	**Attribution:** You must give appropriate credit to AxiOm, link to the original license, and document any changes you have made in Readme.
 4.	**No Malware:** Adding any malware to the app is strictly prohibited.
-5.	**Naming and Interface Restrictions:** You are not allowed to  publish the app on any app store (e.g., AppStore, Google Play, F-Droid, Microsoft) with a name or user interface that closely resembles Hiddify (e.g., names like Hiddify, Hidy*, Hiddy*, *Ify or similar UI are prohibited).
+5.	**Naming and Interface Restrictions:** You are not allowed to publish the app on any app store (e.g., AppStore, Google Play, F-Droid, Microsoft) with a name or user interface that closely resembles AxiOm.
 6.	**NonCommercial Use Only:** You may not use this material for commercial purposes, including selling and advertising, without prior written consent.
-7.	**ShareAlike Requirement:** If you remix, transform, or build upon the material, you must distribute your contributions under this same license as an open-source fork of https://github.com/hiddify/hiddify-app .
+7.	**ShareAlike Requirement:** If you remix, transform, or build upon the material, you must distribute your contributions under this same license as open-source software.
+8.	**Critical modules may be cut from public commits:** The copyright holders may omit security-sensitive or operational modules from the public repository — including, without limitation, Telemost / whitelist-bypass tunnel UI and integration, private relay packaging (`librelay.so` / jniLibs), room-distribution and disk-slot logic, related native/Kotlin bridges, and any equivalent replacements. That omission is intentional and final:
+	- (a) stubs, placeholders, or the absence of those modules in the public tree fully satisfy source-availability for the public Program;
+	- (b) omitted modules are **not** part of the public Program and need not be published on GitHub;
+	- (c) shipping application builds that contain such modules does **not** create an obligation to place those modules (or private companion repositories) into the public commit history.
+	Third parties redistributing AxiOm must not demand disclosure of modules the copyright holders have chosen to keep private under this clause.
 
  
 GNU General Public License
