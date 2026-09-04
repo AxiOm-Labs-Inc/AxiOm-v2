@@ -1,39 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
+    android:width="192dp"
+    android:height="192dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
 
-  <!-- Outer circle -->
-  <path
-      android:pathData="M54,54 m-50,0 a50,50 0 1,0 100,0 a50,50 0 1,0 -100,0"
-      android:strokeColor="#5BA3FF"
-      android:strokeWidth="1.5"
-      android:fillColor="@android:color/transparent"/>
+  <group
+      android:pivotX="256"
+      android:pivotY="256"
+      android:scaleX="0.85"
+      android:scaleY="0.85">
 
-  <!-- Equator line -->
-  <path
-      android:pathData="M4,54 L104,54"
-      android:strokeColor="#5BA3FF"
-      android:strokeWidth="0.8"
-      android:strokeAlpha="0.35"
-      android:fillColor="@android:color/transparent"/>
+    <!-- внешняя окружность -->
+    <path
+        android:pathData="M256,60.31 a195.69,195.69 0 1,0 0,391.38 a195.69,195.69 0 1,0 0,-391.38"
+        android:strokeColor="#5BA3FF"
+        android:strokeWidth="5.99"
+        android:fillColor="#00000000"/>
 
-  <!-- Vertical ellipse left arc -->
-  <path
-      android:pathData="M54,4 A22,50 0 0,0 54,104"
-      android:strokeColor="#5BA3FF"
-      android:strokeWidth="0.6"
-      android:strokeAlpha="0.5"
-      android:fillColor="@android:color/transparent"/>
+    <!-- меридиан -->
+    <path
+        android:pathData="M256,60.31 a79.87,195.69 0 1,0 0,391.38 a79.87,195.69 0 1,0 0,-391.38"
+        android:strokeColor="#5BA3FF"
+        android:strokeWidth="2"
+        android:strokeAlpha="0.5"
+        android:fillColor="#00000000"/>
 
-  <!-- Vertical ellipse right arc -->
-  <path
-      android:pathData="M54,4 A22,50 0 0,1 54,104"
-      android:strokeColor="#5BA3FF"
-      android:strokeWidth="0.6"
-      android:strokeAlpha="0.5"
-      android:fillColor="@android:color/transparent"/>
+    <!-- экватор -->
+    <path
+        android:pathData="M60.31,256 L451.69,256"
+        android:strokeColor="#5BA3FF"
+        android:strokeWidth="2"
+        android:strokeAlpha="0.35"
+        android:fillColor="#00000000"/>
 
+    <!-- Ω: дуга с разрывом внизу и две ножки -->
+    <path
+        android:pathData="M218.5,348.7 a100,100 0 1,1 75,0"
+        android:strokeColor="#5BA3FF"
+        android:strokeWidth="28"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"/>
+    <path
+        android:pathData="M152,356 L222,356"
+        android:strokeColor="#5BA3FF"
+        android:strokeWidth="28"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"/>
+    <path
+        android:pathData="M290,356 L360,356"
+        android:strokeColor="#5BA3FF"
+        android:strokeWidth="28"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"/>
+  </group>
 </vector>
