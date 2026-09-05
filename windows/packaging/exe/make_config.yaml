@@ -1,6 +1,6 @@
 app_id: 6L903538-42B1-4596-G479-BJ779F21A65D
 publisher: AxiOm
-publisher_url: https://github.com/hiddify/hiddify-app
+publisher_url: https://github.com/AxiOm-Labs-Inc/AxiOm-v2
 display_name: AxiOm
 create_desktop_icon: true
 install_dir_name: "{autopf64}\\AxiOm"

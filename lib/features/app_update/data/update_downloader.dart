@@ -63,11 +63,28 @@ class UpdateDownloader with InfraLogger {
   }
 
   /// Install/launch the downloaded update at [filePath].
-  /// On Windows: opens the containing folder in Explorer.
+  /// On Windows: runs Setup.exe silently (Inno) and exits; zip falls back to Explorer.
   /// On Android: opens the APK with the system package installer.
   Future<void> installUpdate(String filePath) async {
     if (PlatformUtils.isWindows) {
-      // Open the containing folder so the user can extract the zip / run the installer
+      final lower = filePath.toLowerCase();
+      if (lower.endsWith('.exe')) {
+        loggy.info("launching silent Windows setup: $filePath");
+        await Process.start(
+          filePath,
+          const [
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/NORESTART',
+            '/CLOSEAPPLICATIONS',
+            '/RESTARTAPPLICATIONS',
+          ],
+          mode: ProcessStartMode.detached,
+        );
+        await _clearCache();
+        exit(0);
+      }
+      // Portable zip fallback: open containing folder
       final file = File(filePath);
       final dir = file.parent;
       if (await dir.exists()) {

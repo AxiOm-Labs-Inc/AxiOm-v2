@@ -28,17 +28,26 @@ abstract class GithubReleaseParser {
     final assets = json["assets"] as List<dynamic>?;
     if (assets != null) {
       if (PlatformUtils.isWindows) {
-        // Windows: prefer .zip (portable), fallback to .exe (installer)
-        for (final asset in assets) {
-          final name = (asset as Map<String, dynamic>)["name"] as String? ?? '';
-          if (name.endsWith('.zip')) {
-            assetDownloadUrl = asset["browser_download_url"] as String?;
+        // Windows: prefer Setup.exe installer, then any .exe, zip only as fallback
+        final maps = assets.cast<Map<String, dynamic>>();
+        for (final a in maps) {
+          final name = (a["name"] as String?) ?? '';
+          if (name.toLowerCase().endsWith('.exe') && name.toLowerCase().contains('setup')) {
+            assetDownloadUrl = a["browser_download_url"] as String?;
             break;
           }
         }
         if (assetDownloadUrl == null) {
-          for (final a in assets.cast<Map<String, dynamic>>()) {
-            if ((a["name"] as String?)?.endsWith('.exe') == true) {
+          for (final a in maps) {
+            if ((a["name"] as String?)?.toLowerCase().endsWith('.exe') == true) {
+              assetDownloadUrl = a["browser_download_url"] as String?;
+              break;
+            }
+          }
+        }
+        if (assetDownloadUrl == null) {
+          for (final a in maps) {
+            if ((a["name"] as String?)?.toLowerCase().endsWith('.zip') == true) {
               assetDownloadUrl = a["browser_download_url"] as String?;
               break;
             }

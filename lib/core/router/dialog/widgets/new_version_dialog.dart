@@ -136,7 +136,10 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
             Row(children: [
               Icon(Icons.check_circle, size: 18, color: const Color(0xFF5DCAA5)),
               const SizedBox(width: 8),
-              Text(isWindows ? 'Загрузка завершена' : 'APK готов к установке', style: TextStyle(color: const Color(0xFF5DCAA5), fontSize: 13)),
+              Text(
+                isWindows ? 'Установщик готов' : 'APK готов к установке',
+                style: const TextStyle(color: Color(0xFF5DCAA5), fontSize: 13),
+              ),
             ]),
           ],
         ],
@@ -153,8 +156,8 @@ class NewVersionDialog extends HookConsumerWidget with PresLogger {
         if (readyToInstall.value && canAct)
           FilledButton.icon(
             onPressed: install,
-            icon: Icon(isWindows ? Icons.folder_open : Icons.install_mobile, size: 18),
-            label: Text(isWindows ? 'Открыть папку' : 'Установить'),
+            icon: Icon(isWindows ? Icons.system_update_alt : Icons.install_mobile, size: 18),
+            label: const Text('Установить'),
           )
         else if (canAct && !readyToInstall.value)
           FilledButton(
