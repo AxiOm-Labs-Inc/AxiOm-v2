@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Logo of the loading screen: a copy of the VPN connect button
+     (assets/images/connect_button.svg + the omega from connection_button.dart).
+     The omega is a real Roboto glyph outline: VectorDrawable has no text. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="192dp"
     android:height="192dp"
@@ -8,50 +11,35 @@
   <group
       android:pivotX="256"
       android:pivotY="256"
-      android:scaleX="0.85"
-      android:scaleY="0.85">
+      android:scaleX="0.65"
+      android:scaleY="0.65">
 
-    <!-- внешняя окружность -->
     <path
-        android:pathData="M256,60.31 a195.69,195.69 0 1,0 0,391.38 a195.69,195.69 0 1,0 0,-391.38"
-        android:strokeColor="#5BA3FF"
-        android:strokeWidth="5.99"
+        android:pathData="M256,0 a256,256 0 1,0 0,512 a256,256 0 1,0 0,-512"
+        android:fillColor="#EEEEF8"/>
+
+    <path
+        android:pathData="M256,13 a243,243 0 1,0 0,486 a243,243 0 1,0 0,-486"
+        android:strokeColor="#185FA5"
+        android:strokeWidth="7.5"
         android:fillColor="#00000000"/>
 
-    <!-- меридиан -->
     <path
-        android:pathData="M256,60.31 a79.87,195.69 0 1,0 0,391.38 a79.87,195.69 0 1,0 0,-391.38"
-        android:strokeColor="#5BA3FF"
-        android:strokeWidth="2"
+        android:pathData="M256,13 a99,243 0 1,0 0,486 a99,243 0 1,0 0,-486"
+        android:strokeColor="#185FA5"
+        android:strokeWidth="3"
         android:strokeAlpha="0.5"
         android:fillColor="#00000000"/>
 
-    <!-- экватор -->
     <path
-        android:pathData="M60.31,256 L451.69,256"
-        android:strokeColor="#5BA3FF"
-        android:strokeWidth="2"
+        android:pathData="M13,256 L499,256"
+        android:strokeColor="#185FA5"
+        android:strokeWidth="3"
         android:strokeAlpha="0.35"
         android:fillColor="#00000000"/>
 
-    <!-- Ω: дуга с разрывом внизу и две ножки -->
     <path
-        android:pathData="M218.5,348.7 a100,100 0 1,1 75,0"
-        android:strokeColor="#5BA3FF"
-        android:strokeWidth="28"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000"/>
-    <path
-        android:pathData="M152,356 L222,356"
-        android:strokeColor="#5BA3FF"
-        android:strokeWidth="28"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000"/>
-    <path
-        android:pathData="M290,356 L360,356"
-        android:strokeColor="#5BA3FF"
-        android:strokeWidth="28"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000"/>
+        android:pathData="M266.7 348Q288.74 343.69 301.04 321.01Q313.34 298.33 313.82 260.95V239.55Q313.82 202.65 298.33 183.01Q282.83 163.36 255.84 163.36Q228.85 163.36 213.51 183.33Q198.18 203.29 198.18 239.87V257.92Q198.18 296.25 210.72 319.89Q223.26 343.53 246.42 348V373.88H167.83V348.8H203.13Q186.2 332.51 176.62 307.99Q167.03 283.47 167.03 257.6V239.87Q167.03 210.16 178.3 186.84Q189.56 163.52 209.84 150.82Q230.12 138.13 255.84 138.13Q281.4 138.13 301.6 150.58Q321.81 163.04 333.15 185.72Q344.49 208.4 344.97 237.15V257.92Q344.97 283.47 335.38 307.99Q325.8 332.51 308.87 348.8H344.01V373.88H266.7Z"
+        android:fillColor="#185FA5"/>
   </group>
 </vector>
