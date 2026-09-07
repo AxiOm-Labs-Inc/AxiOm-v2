@@ -3,6 +3,13 @@
     <channel>
         <title>Release</title>
         <item>
+            <title>Version 4.4.1</title>
+            <pubDate>Mon, 07 Sep 2026 12:00:00 +0000</pubDate>
+            <enclosure
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.4.1/AxiOm-v4.4.1-arm64.apk"
+                sparkle:version="4.4.1" sparkle:os="android" />
+        </item>
+        <item>
             <title>Version 4.4.0</title>
             <pubDate>Fri, 04 Sep 2026 20:00:00 +0000</pubDate>
             <enclosure
@@ -43,6 +50,13 @@
             <enclosure
                 url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.1.12/app-arm64-v8a-release.apk"
                 sparkle:version="4.1.12" sparkle:os="ios" />
+        </item>
+        <item>
+            <title>Version 4.4.1</title>
+            <pubDate>Mon, 07 Sep 2026 12:10:00 +0000</pubDate>
+            <enclosure
+                url="https://github.com/AxiOm-Labs-Inc/AxiOm-v2/releases/download/v4.4.1/AxiOm-v4.4.1-Setup.exe"
+                sparkle:version="4.4.1" sparkle:os="windows" />
         </item>
         <item>
             <title>Version 4.4.0</title>
