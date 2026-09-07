@@ -84,7 +84,7 @@ abstract class ConfigOptions {
 
   static final directDnsAddress = PreferencesNotifier.create<String, String>(
     "direct-dns-address",
-    "udp://1.1.1.1",
+    "local",
     possibleValues: List.of([
       "local",
       "udp://223.5.5.5",
@@ -97,12 +97,15 @@ abstract class ConfigOptions {
       "4.4.2.2",
       "8.8.8.8",
     ]),
-    // Direct-трафик резолвится этим сервером. В регионе ru весь .ru/geoip:ru идёт мимо
-    // туннеля, а plain-UDP к 1.1.1.1 режет DPI — домены не резолвятся и страницы висят.
+    // Direct-трафик (.ru при region=ru) резолвится этим сервером мимо туннеля.
+    // plain-UDP к 1.1.1.1 / 77.88.8.8 при включённом VPN часто не доходит или не
+    // возвращается (петля в TUN / strict-route) — браузер висит на «Поиск…» и
+    // падает в NXDOMAIN (проверено: login.procloud.ru). `local` идёт через
+    // LocalResolver на underlying network и работает. DoH для Direct нельзя:
+    // ядро гонит его через direct-fragment и ломает TLS к резолверу.
     defaultValueFunction: (ref) => switch (ref.read(region)) {
       Region.cn => "223.5.5.5",
-      Region.ru => "udp://77.88.8.8",
-      _ => "1.1.1.1",
+      _ => "local",
     },
     validator: (value) => value.isNotBlank,
   );

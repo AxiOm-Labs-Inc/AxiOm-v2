@@ -15,6 +15,7 @@ class PreferencesMigration with InfraLogger {
       PreferencesVersion1Migration(sharedPreferences),
       PreferencesVersion2Migration(sharedPreferences),
       PreferencesVersion3Migration(sharedPreferences),
+      PreferencesVersion4Migration(sharedPreferences),
     ];
 
     if (currentVersion == migrationSteps.length) {
@@ -165,6 +166,25 @@ class PreferencesVersion3Migration extends PreferencesMigrationStep with InfraLo
     if (ipv6 != "ipv4_only") {
       loggy.debug("changing [ipv6-mode] from [$ipv6] to [ipv4_only]");
       await sharedPreferences.setString("ipv6-mode", "ipv4_only");
+    }
+  }
+}
+
+/// Direct DNS: `udp://77.88.8.8` / Cloudflare при включённом VPN не резолвят .ru
+/// (браузер: «Поиск login.procloud.ru…» → «Сервер не найден»; без VPN — ок).
+/// Рабочий путь — `local` (системный DNS на underlying network). Дефолт уже
+/// `local`, но у установленных приложений в prefs лежит старое значение.
+class PreferencesVersion4Migration extends PreferencesMigrationStep with InfraLogger {
+  PreferencesVersion4Migration(super.sharedPreferences);
+
+  @override
+  Future<void> migrate() async {
+    // Принудительно для всех: прежние udp://77.88.8.8 и udp://1.1.1.1 — сломанный
+    // путь при VPN, а не осознанный «другой» выбор. UI настройку оставляет.
+    final directDns = sharedPreferences.getString("direct-dns-address");
+    if (directDns != "local") {
+      loggy.debug("changing [direct-dns-address] from [$directDns] to [local]");
+      await sharedPreferences.setString("direct-dns-address", "local");
     }
   }
 }
