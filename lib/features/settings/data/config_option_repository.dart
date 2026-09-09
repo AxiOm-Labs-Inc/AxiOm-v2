@@ -110,9 +110,14 @@ abstract class ConfigOptions {
     validator: (value) => value.isNotBlank,
   );
 
+  // При `auto` ядро отдаёт `dns-direct` стратегию `prefer_ipv4` — AAAA для direct-доменов
+  // (.ru при region=ru) всё равно уходят на системный резолвер и висят до таймаута на
+  // строгих сетях, страницы грузятся рывками. `ipv4_only` полностью убирает AAAA у
+  // direct-DNS. `ipv6-mode` на это не влияет — это отдельный тумблер. Дефолт до
+  // установленных приложений дотягивает миграция prefs v5.
   static final directDnsDomainStrategy = PreferencesNotifier.create<DomainStrategy, String>(
     "direct-dns-domain-strategy",
-    DomainStrategy.auto,
+    DomainStrategy.ipv4Only,
     mapFrom: (value) => DomainStrategy.values.firstWhere((e) => e.key == value),
     mapTo: (value) => value.key,
   );

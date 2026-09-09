@@ -16,6 +16,7 @@ class PreferencesMigration with InfraLogger {
       PreferencesVersion2Migration(sharedPreferences),
       PreferencesVersion3Migration(sharedPreferences),
       PreferencesVersion4Migration(sharedPreferences),
+      PreferencesVersion5Migration(sharedPreferences),
     ];
 
     if (currentVersion == migrationSteps.length) {
@@ -185,6 +186,26 @@ class PreferencesVersion4Migration extends PreferencesMigrationStep with InfraLo
     if (directDns != "local") {
       loggy.debug("changing [direct-dns-address] from [$directDns] to [local]");
       await sharedPreferences.setString("direct-dns-address", "local");
+    }
+  }
+}
+
+/// `direct-dns-domain-strategy`: при `auto`/`prefer_ipv4` ядро всё равно шлёт AAAA
+/// для direct-доменов (.ru при region=ru) на системный резолвер — на строгих сетях
+/// (Wi-Fi с файрволом, РФ-резолверы) они висят по несколько секунд, страницы .ru
+/// грузятся рывками. `ipv4_only` полностью убирает AAAA у direct-DNS. Дефолт уже
+/// `ipv4_only`, но у установленных приложений в prefs лежит старое значение.
+class PreferencesVersion5Migration extends PreferencesMigrationStep with InfraLogger {
+  PreferencesVersion5Migration(super.sharedPreferences);
+
+  @override
+  Future<void> migrate() async {
+    // Принудительно для всех: `auto`/`prefer_ipv4`/`prefer_ipv6` для direct-DNS — это
+    // AAAA-столл на строгих сетях, а не осознанный «другой» выбор. UI настройку оставляет.
+    final strategy = sharedPreferences.getString("direct-dns-domain-strategy");
+    if (strategy != "ipv4_only") {
+      loggy.debug("changing [direct-dns-domain-strategy] from [$strategy] to [ipv4_only]");
+      await sharedPreferences.setString("direct-dns-domain-strategy", "ipv4_only");
     }
   }
 }
