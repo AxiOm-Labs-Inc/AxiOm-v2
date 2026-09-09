@@ -12,10 +12,10 @@ class ServerOption {
 
   final String country;
 
-  /// 'vless' | 'hysteria2'
+  /// 'vless' | 'hysteria2' | 'naive' | 'shadowtls'
   final String protocol;
 
-  /// 'ws' | 'tcp' (for vless) | 'hy2' (for hysteria2)
+  /// 'ws' | 'tcp' (for vless) | 'hy2' (hysteria2) | 'naive' | 'stls' (shadowtls)
   final String transport;
   final String rawTag;
   final int delay;
@@ -27,12 +27,18 @@ class ServerOption {
   static const String protocolHysteria2 = 'hysteria2';
   static const String protocolNaive = 'naive';
 
+  /// ShadowTLS v3 + Shadowsocks. В подписке это цепочка из двух хостов, но
+  /// пользователю она видна одной записью `<Страна> (<user>) [stls]` — звено
+  /// цепочки в селектор не попадает.
+  static const String protocolShadowTls = 'shadowtls';
+
   static bool isValidDelay(int delay) => delay > 0 && delay < 65000;
 
   // Server tags look like "<Country> (<username>) [<token>]" where the
   // parenthetical is the subscription account name (varies per user), so it
   // must not be hard-coded to a specific value. The token encodes both
-  // protocol and transport: ws/tcp → vless, hy2/hysteria2 → hysteria2.
+  // protocol and transport: ws/tcp → vless, hy2/hysteria2 → hysteria2,
+  // naive/http → naive, stls/shadowtls → shadowtls.
   static final RegExp _displayPattern = RegExp(
     r'^(.*?)\s*\([^)]*\)\s*\[([a-z0-9]+)\]\s*$',
     caseSensitive: false,
@@ -45,6 +51,7 @@ class ServerOption {
       'tcp' => (protocolVless, 'tcp'),
       'hy2' || 'hysteria2' || 'hysteria' || 'hy' => (protocolHysteria2, 'hy2'),
       'naive' || 'http' => (protocolNaive, 'naive'),
+      'stls' || 'shadowtls' => (protocolShadowTls, 'stls'),
       _ => null,
     };
   }
@@ -87,7 +94,8 @@ class ServerOption {
     'vless' => 0,
     'hysteria2' => 1,
     'naive' => 2,
-    _ => 3,
+    'shadowtls' => 3,
+    _ => 4,
   };
 
   static List<String> protocolsFor(List<ServerOption> options, String country) {
@@ -145,6 +153,7 @@ class ServerOption {
     'vless' => 'VLESS',
     'hysteria2' => 'Hysteria2',
     'naive' => 'Naive',
+    'shadowtls' => 'ShadowTLS',
     _ => protocol,
   };
 
@@ -153,6 +162,7 @@ class ServerOption {
     'tcp' => 'Reality (TCP)',
     'hy2' => 'QUIC',
     'naive' => 'HTTP/2 TLS',
+    'stls' => 'ShadowTLS (TCP)',
     _ => transport,
   };
 
