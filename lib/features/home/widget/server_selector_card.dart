@@ -458,15 +458,18 @@ class _ServerSelectorBody extends HookConsumerWidget {
     }
 
     Widget buildTransportRow(WidgetRef ref) {
-      // Hysteria2 (QUIC) and Naive (HTTP/2) each have a single transport — hide the row.
-      if (protocol == ServerOption.protocolHysteria2 || protocol == ServerOption.protocolNaive) {
+      // Hysteria2 (QUIC), Naive (HTTP/2) и ShadowTLS — у каждого один транспорт, строку прячем.
+      if (protocol == ServerOption.protocolHysteria2 ||
+          protocol == ServerOption.protocolNaive ||
+          protocol == ServerOption.protocolShadowTls) {
         return const SizedBox.shrink();
       }
 
       if (isAuto) {
         if (fastestOption == null ||
             fastestOption!.protocol == ServerOption.protocolHysteria2 ||
-            fastestOption!.protocol == ServerOption.protocolNaive) {
+            fastestOption!.protocol == ServerOption.protocolNaive ||
+            fastestOption!.protocol == ServerOption.protocolShadowTls) {
           return const SizedBox.shrink();
         }
         return labelRow('Транспорт', ServerOption.transportLabel(fastestOption!.transport));
