@@ -20,6 +20,7 @@ import 'package:hiddify/features/home/data/device_count_provider.dart';
 import 'package:hiddify/features/home/widget/connection_button.dart';
 import 'package:hiddify/features/home/widget/server_selector_card.dart';
 import 'package:hiddify/features/home/widget/split_tunneling_card.dart';
+import 'package:hiddify/features/home/widget/windows_admin_banner.dart';
 import 'package:hiddify/features/profile/data/profile_parser.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
@@ -147,6 +148,7 @@ class HomePage extends HookConsumerWidget {
                                     );
                                   },
                                 ),
+                              const WindowsAdminBanner(),
                               const HomeAccountBanner(),
                               const HomeExpiryBanner(),
                               Expanded(

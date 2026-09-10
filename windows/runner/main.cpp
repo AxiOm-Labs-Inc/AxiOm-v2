@@ -1,11 +1,72 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
+#include <shellapi.h>
+
+#include <string>
+#include <vector>
 
 #include "flutter_window.h"
 #include "utils.h"
 #include "app_links/app_links_plugin_c_api.h"
 // #include <protocol_handler_windows/protocol_handler_windows_plugin_c_api.h>
+
+namespace
+{
+
+  // Поднят ли токен процесса до администратора.
+  bool IsProcessElevated()
+  {
+    HANDLE token = nullptr;
+    if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token))
+    {
+      return false;
+    }
+    TOKEN_ELEVATION elevation = {};
+    DWORD size = 0;
+    const bool ok = ::GetTokenInformation(token, TokenElevation, &elevation,
+                                          sizeof(elevation), &size) != FALSE;
+    ::CloseHandle(token);
+    return ok && elevation.TokenIsElevated != 0;
+  }
+
+  bool HasFlag(const std::vector<std::string> &args, const char *flag)
+  {
+    for (const auto &arg : args)
+    {
+      if (arg == flag)
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Перезапуск себя с запросом прав администратора.
+  //
+  // true  — elevated-копия стартовала, текущий процесс обязан молча выйти.
+  // false — пользователь нажал «Нет» в UAC либо повышение невозможно; тогда
+  //         работаем дальше без прав, а не закрываемся.
+  bool RelaunchElevated()
+  {
+    wchar_t path[MAX_PATH] = {};
+    if (::GetModuleFileNameW(nullptr, path, MAX_PATH) == 0)
+    {
+      return false;
+    }
+
+    SHELLEXECUTEINFOW info = {sizeof(SHELLEXECUTEINFOW)};
+    info.lpVerb = L"runas";
+    info.lpFile = path;
+    // Флаг не даёт зациклиться: если повышение почему-то не сработало, вторая
+    // копия уходит в ограниченный режим, а не открывает UAC по кругу.
+    info.lpParameters = L"--no-elevate";
+    info.nShow = SW_SHOWNORMAL;
+    info.fMask = SEE_MASK_NOASYNC;
+    return ::ShellExecuteExW(&info) != FALSE;
+  }
+
+} // namespace
 
 bool SendAppLinkToInstance(const std::wstring &title)
 {
@@ -56,14 +117,38 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_SUCCESS;
   }
 
+  // Права администратора нужны режиму службы VPN (TUN): виртуальный адаптер и
+  // таблица маршрутов. Просим их здесь, а не манифестом, чтобы отказ в UAC не
+  // означал «приложение не запустилось». Порядок важен: проверка чужого окна
+  // выше нас — второй клик по ярлыку при уже запущенном приложении не должен
+  // приводить к лишнему запросу UAC.
+  std::vector<std::string> command_line_arguments = GetCommandLineArguments();
+  bool restricted_mode = false;
+  if (!IsProcessElevated())
+  {
+    if (HasFlag(command_line_arguments, "--no-elevate") || !RelaunchElevated())
+    {
+      restricted_mode = true;
+    }
+    else
+    {
+      return EXIT_SUCCESS; // работу продолжает elevated-копия
+    }
+  }
+  if (restricted_mode)
+  {
+    // Флаг читает Dart (`WindowsAdmin.init`): плашка в UI и подмена режима
+    // службы на системный прокси, пока прав нет.
+    command_line_arguments.push_back("--no-admin");
+  }
+
   HANDLE hMutexInstance = CreateMutex(NULL, TRUE, L"AxiOmMutex");
   HWND handle = FindWindowA(NULL, "AxiOm");
 
   if (GetLastError() == ERROR_ALREADY_EXISTS)
   {
     flutter::DartProject project(L"data");
-    std::vector<std::string> command_line_arguments = GetCommandLineArguments();
-    project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
+    project.set_dart_entrypoint_arguments(command_line_arguments);
     FlutterWindow window(project);
     if (window.SendAppLinkToInstance(L"AxiOm"))
     {
@@ -89,9 +174,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   flutter::DartProject project(L"data");
 
-  std::vector<std::string> command_line_arguments =
-      GetCommandLineArguments();
-
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
@@ -102,6 +184,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
+
+  // Окно elevated-процесса по умолчанию не принимает сообщения от процессов с
+  // обычными правами (UIPI). Без этого браузер не смог бы передать нам
+  // deep-link `axiom://` — импорт подписки по ссылке молча перестал бы
+  // работать. Разрешаем ровно то сообщение, которым пользуется app_links.
+  if (HWND window_handle = window.GetHandle())
+  {
+    ::ChangeWindowMessageFilterEx(window_handle, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
+  }
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0))
