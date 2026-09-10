@@ -9,7 +9,7 @@ part 'my_app_links.g.dart';
 @riverpod
 Stream<String> myAppLinks(Ref ref) async* {
   if (PlatformUtils.isWindows) {
-    for (final protocol in LinkParser.protocols) {
+    for (final protocol in LinkParser.ownProtocols) {
       registerProtocolHandler(protocol);
     }
   }

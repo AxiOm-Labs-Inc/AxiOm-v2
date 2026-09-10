@@ -65,7 +65,10 @@ class AutoStartNotifier extends _$AutoStartNotifier with InfraLogger {
     launchAtStartup.setup(
       appName: appInfo.name,
       appPath: Platform.resolvedExecutable,
-      packageName: "Hiddify.HiddifyNext",
+      // Не "Hiddify.HiddifyNext": под этим именем автозапуск регистрирует
+      // апстрим, и на машине с обоими приложениями запись в реестре одна на
+      // двоих — кто включил автозапуск последним, тот и переписал чужую.
+      packageName: "AxiOm.AxiOm",
     );
     if (Platform.isWindows) await _migrateWindowsAutoStart();
     final isEnabled = await _isEnabled();
@@ -82,9 +85,10 @@ class AutoStartNotifier extends _$AutoStartNotifier with InfraLogger {
   /// /rl highest` всё равно откажет, и мы бы снесли рабочую запись, не создав
   /// замены.
   Future<void> _migrateWindowsAutoStart() async {
+    final hadLegacyEntry = await _adoptLegacyRegistryAutoStart();
     if (WindowsAdmin.restricted) return;
     try {
-      if (!await launchAtStartup.isEnabled()) return;
+      if (!hadLegacyEntry && !await launchAtStartup.isEnabled()) return;
       loggy.info("migrating windows auto start from registry to scheduled task");
       if (await _WindowsTaskAutoStart.enable()) {
         await launchAtStartup.disable();
@@ -93,6 +97,40 @@ class AutoStartNotifier extends _$AutoStartNotifier with InfraLogger {
       }
     } catch (e) {
       loggy.warning("windows auto start migration failed: $e");
+    }
+  }
+
+  /// До 4.4.3 автозапуск регистрировался под чужим именем `Hiddify.HiddifyNext`
+  /// — оно досталось от апстрима вместе с форком. После переименования в
+  /// `AxiOm.AxiOm` штатный `launch_at_startup` старую запись просто не видит, и
+  /// она осталась бы сиротой: Windows продолжает поднимать по ней приложение, а
+  /// выключить это из интерфейса уже нельзя.
+  ///
+  /// ⚠️ Удаляем запись **только если она указывает на наш exe**. На машине, где
+  /// стоит и настоящий Hiddify, под этим же именем лежит ЕГО автозапуск —
+  /// снести его было бы ровно тем вредом, от которого мы уходим.
+  ///
+  /// Возвращает `true`, если нашли и убрали свою старую запись: тогда вызывающий
+  /// код включит автозапуск заново, уже под новым именем.
+  Future<bool> _adoptLegacyRegistryAutoStart() async {
+    if (!Platform.isWindows) return false;
+    const runKey = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+    const legacyName = "Hiddify.HiddifyNext";
+    try {
+      final query = await Process.run("reg", ["query", runKey, "/v", legacyName]);
+      if (query.exitCode != 0) return false;
+      final value = (query.stdout as String).toLowerCase();
+      final exe = Platform.resolvedExecutable.toLowerCase();
+      if (!value.contains(exe)) {
+        loggy.debug("legacy autostart entry belongs to another app, leaving it alone");
+        return false;
+      }
+      loggy.info("removing legacy autostart entry [$legacyName]");
+      await Process.run("reg", ["delete", runKey, "/v", legacyName, "/f"]);
+      return true;
+    } catch (e) {
+      loggy.warning("legacy autostart cleanup failed: $e");
+      return false;
     }
   }
 
