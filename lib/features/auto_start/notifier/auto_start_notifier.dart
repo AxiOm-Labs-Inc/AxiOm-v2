@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:hiddify/core/app_info/app_info_provider.dart';
+import 'package:hiddify/core/model/windows_admin.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -74,22 +75,39 @@ class AutoStartNotifier extends _$AutoStartNotifier with InfraLogger {
     return isEnabled;
   }
 
-  /// У кого автозапуск был включён до 4.4.3, тот держит запись в реестре — она
-  /// теперь не срабатывает. Переносим такого пользователя на задачу планировщика
-  /// молча: он автозапуск уже включал, спрашивать заново незачем.
+  /// У кого автозапуск был включён до 4.4.3, тот держит запись в реестре. Она
+  /// продолжает работать, пока приложение стартует без прав, но перестаёт, как
+  /// только копия становится elevated. Поэтому переносим на задачу планировщика
+  /// молча — но только если процесс сейчас с правами: без них `schtasks
+  /// /rl highest` всё равно откажет, и мы бы снесли рабочую запись, не создав
+  /// замены.
   Future<void> _migrateWindowsAutoStart() async {
+    if (WindowsAdmin.restricted) return;
     try {
       if (!await launchAtStartup.isEnabled()) return;
       loggy.info("migrating windows auto start from registry to scheduled task");
-      await launchAtStartup.disable();
-      await _WindowsTaskAutoStart.enable();
+      if (await _WindowsTaskAutoStart.enable()) {
+        await launchAtStartup.disable();
+      } else {
+        loggy.warning("scheduled task not created, keeping registry entry");
+      }
     } catch (e) {
       loggy.warning("windows auto start migration failed: $e");
     }
   }
 
+  /// На Windows автозапуск может лежать в двух местах: задача планировщика (когда
+  /// приложение запущено с правами) и запись в реестре (когда прав не было и
+  /// задачу создать не удалось). Включённым считается любое из них.
   Future<bool> _isEnabled() async {
-    if (Platform.isWindows) return _WindowsTaskAutoStart.isEnabled();
+    if (Platform.isWindows) {
+      if (await _WindowsTaskAutoStart.isEnabled()) return true;
+      try {
+        return await launchAtStartup.isEnabled();
+      } catch (_) {
+        return false;
+      }
+    }
     return launchAtStartup.isEnabled();
   }
 
@@ -108,11 +126,22 @@ class AutoStartNotifier extends _$AutoStartNotifier with InfraLogger {
   Future<void> enable() async {
     loggy.debug("enabling auto start");
     if (Platform.isWindows) {
-      // Задача может не создаться (групповые политики, урезанный планировщик) —
-      // тогда переключатель обязан вернуться в «выключено», а не соврать.
-      final ok = await _WindowsTaskAutoStart.enable();
-      if (!ok) loggy.warning("failed to create autostart task");
-      state = AsyncValue.data(ok);
+      // Задача планировщика — основной путь: только она поднимает приложение с
+      // правами. Не вышло (нет прав, групповые политики, урезанный планировщик)
+      // — откатываемся на запись в реестре: она сработает, пока копия стартует
+      // без повышения, а это ровно тот случай, когда задачу и не дали создать.
+      if (await _WindowsTaskAutoStart.enable()) {
+        state = const AsyncValue.data(true);
+        return;
+      }
+      loggy.warning("autostart task not created, falling back to registry");
+      try {
+        await launchAtStartup.enable();
+        state = const AsyncValue.data(true);
+      } catch (e) {
+        loggy.warning("registry autostart failed too: $e");
+        state = const AsyncValue.data(false);
+      }
       return;
     }
     await launchAtStartup.enable();
@@ -122,7 +151,14 @@ class AutoStartNotifier extends _$AutoStartNotifier with InfraLogger {
   Future<void> disable() async {
     loggy.debug("disabling auto start");
     if (Platform.isWindows) {
+      // Снимаем оба варианта: какой из них реально стоит, зависит от того, с
+      // правами или без запускалось приложение в момент включения.
       await _WindowsTaskAutoStart.disable();
+      try {
+        await launchAtStartup.disable();
+      } catch (_) {
+        // Записи нет — нечего снимать.
+      }
       state = const AsyncValue.data(false);
       return;
     }

@@ -5,17 +5,20 @@
       <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
     </windowsSettings>
   </application>
-  <!-- Режим VPN (TUN) поднимает виртуальный адаптер и правит таблицу маршрутов —
-       без прав администратора он не стартует. С 4.4.3 это дефолтный режим службы
-       на Windows (см. ServiceMode.defaultMode и миграцию prefs v6), поэтому право
-       запрашивается сразу, а не после первой неудачной попытки подключения.
-       Следствия: при каждом запуске показывается запрос UAC; автозапуск через
-       HKCU\...\Run Windows для elevated-процессов игнорирует, поэтому на Windows
-       он переведён на задачу планировщика (auto_start_notifier.dart). -->
+  <!-- Уровень намеренно `asInvoker`, хотя дефолтный режим службы на Windows —
+       VPN (TUN), которому нужны права администратора.
+
+       С `requireAdministrator` отказ в окне UAC означал бы, что приложение не
+       запускается вообще: нажал «Нет» — и вместо окна ничего. Поэтому право
+       запрашивается не манифестом, а самим процессом при старте
+       (`main.cpp`, RelaunchElevated). Отказ там не фатален: процесс продолжает
+       работу в ограниченном режиме, получает аргумент `--no-admin`, показывает
+       плашку и работает системным прокси, пока пользователь не перезапустит
+       приложение с правами кнопкой в этой плашке. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
       </requestedPrivileges>
     </security>
   </trustInfo>

@@ -2,6 +2,7 @@ import 'package:dartx/dartx.dart';
 import 'package:fpdart/fpdart.dart';
 import 'package:hiddify/core/model/optional_range.dart';
 import 'package:hiddify/core/model/region.dart';
+import 'package:hiddify/core/model/windows_admin.dart';
 import 'package:hiddify/core/utils/exception_handler.dart';
 import 'package:hiddify/core/utils/json_converters.dart';
 import 'package:hiddify/core/utils/preferences_utils.dart';
@@ -429,7 +430,15 @@ abstract class ConfigOptions {
     //   _ => <SingboxRule>[],
     // };
 
-    final mode = ref.watch(serviceMode);
+    final selectedMode = ref.watch(serviceMode);
+    // Без прав администратора TUN не поднимется — ядро упадёт на создании
+    // виртуального адаптера. Пока пользователь не перезапустил приложение с
+    // правами (кнопка в плашке, `WindowsAdmin.relaunchAsAdmin`), работаем
+    // системным прокси: он проксирует хотя бы тот софт, который его слушает.
+    // Сохранённую настройку не трогаем — она вернётся в силу сама.
+    final mode = WindowsAdmin.restricted && selectedMode == ServiceMode.tun
+        ? ServiceMode.systemProxy
+        : selectedMode;
     // final reg = ref.watch(Preferences.region.notifier).raw();
 
     return SingboxConfigOption(
