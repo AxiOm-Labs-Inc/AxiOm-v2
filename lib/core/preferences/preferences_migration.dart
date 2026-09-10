@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:hiddify/utils/utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,6 +19,7 @@ class PreferencesMigration with InfraLogger {
       PreferencesVersion3Migration(sharedPreferences),
       PreferencesVersion4Migration(sharedPreferences),
       PreferencesVersion5Migration(sharedPreferences),
+      PreferencesVersion6Migration(sharedPreferences),
     ];
 
     if (currentVersion == migrationSteps.length) {
@@ -206,6 +209,35 @@ class PreferencesVersion5Migration extends PreferencesMigrationStep with InfraLo
     if (strategy != "ipv4_only") {
       loggy.debug("changing [direct-dns-domain-strategy] from [$strategy] to [ipv4_only]");
       await sharedPreferences.setString("direct-dns-domain-strategy", "ipv4_only");
+    }
+  }
+}
+
+/// `service-mode` на Windows: системный прокси уважают не все программы — часть
+/// браузеров ходит мимо него (свои настройки прокси, DoH), приложения со своим
+/// сетевым стеком тем более. Симптом обманчивый: VPN «подключён», часть сайтов
+/// работает, а конкретный сервис — нет (10.09.2026: Telegram Web не открывался ни
+/// на одном сервере при полностью исправных транспортах). Режим `vpn` (TUN)
+/// перехватывает трафик всех приложений и такого класса отказов не имеет.
+///
+/// Дефолт уже `vpn` (`ServiceMode.defaultMode`), но у установленных приложений в
+/// prefs лежит `system-proxy` — либо от прежнего дефолта, либо от миграции v1.
+/// Только Windows: TUN там поднимается тем же процессом, которому манифест уже
+/// запрашивает права администратора. Linux и macOS не трогаем.
+class PreferencesVersion6Migration extends PreferencesMigrationStep with InfraLogger {
+  PreferencesVersion6Migration(super.sharedPreferences);
+
+  @override
+  Future<void> migrate() async {
+    if (!Platform.isWindows) return;
+
+    // `proxy` (голый локальный порт) не трогаем: его выбирают осознанно, когда
+    // прокси прописывают в конкретную программу руками. Перебиваем только
+    // `system-proxy` — значение прежнего дефолта, то есть не выбор пользователя.
+    final mode = sharedPreferences.getString("service-mode");
+    if (mode == null || mode == "system-proxy") {
+      loggy.debug("changing [service-mode] from [$mode] to [vpn]");
+      await sharedPreferences.setString("service-mode", "vpn");
     }
   }
 }
