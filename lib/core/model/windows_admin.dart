@@ -36,21 +36,26 @@ abstract final class WindowsAdmin {
   /// мьютекс `AxiOmMutex` в `main.cpp`). Поэтому мы стартуем помощника
   /// detached и немедленно завершаемся.
   ///
-  /// Ничего не возвращает: если UAC отклонят снова, поднимется обычная
-  /// ограниченная копия — то есть ровно то состояние, из которого пользователь
-  /// нажал кнопку.
+  /// Ждём **по PID**, а не таймером: фиксированной паузы может не хватить на
+  /// нагруженной машине, и тогда новая копия молча выходит — кнопка внешне не
+  /// делает ничего. `-Timeout` оставлен страховкой на случай, если текущая
+  /// копия почему-то не закроется.
+  ///
+  /// Если UAC отклонят снова, поднимается обычная ограниченная копия — то есть
+  /// ровно то состояние, из которого пользователь нажал кнопку. Без этого
+  /// отказ означал бы, что приложения не осталось вообще: текущая копия уже
+  /// закрыта, а elevated так и не стартовала. Флаг `--no-elevate` не даёт
+  /// запасной копии тут же снова открыть UAC.
   static Future<void> relaunchAsAdmin() async {
     if (!Platform.isWindows) return;
-    final exe = Platform.resolvedExecutable;
+    // В одинарных кавычках PowerShell апостроф экранируется удвоением.
+    final exe = Platform.resolvedExecutable.replaceAll("'", "''");
+    final script = "Wait-Process -Id $pid -Timeout 30 -ErrorAction SilentlyContinue; "
+        "try { Start-Process -FilePath '$exe' -Verb RunAs -ErrorAction Stop } "
+        "catch { Start-Process -FilePath '$exe' -ArgumentList '--no-elevate' }";
     await Process.start(
       "powershell",
-      [
-        "-NoProfile",
-        "-WindowStyle",
-        "Hidden",
-        "-Command",
-        "Start-Sleep -Milliseconds 1500; Start-Process -FilePath '$exe' -Verb RunAs",
-      ],
+      ["-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
       mode: ProcessStartMode.detached,
     );
     exit(0);
