@@ -20,6 +20,7 @@ class PreferencesMigration with InfraLogger {
       PreferencesVersion4Migration(sharedPreferences),
       PreferencesVersion5Migration(sharedPreferences),
       PreferencesVersion6Migration(sharedPreferences),
+      PreferencesVersion7Migration(sharedPreferences),
     ];
 
     if (currentVersion == migrationSteps.length) {
@@ -239,6 +240,42 @@ class PreferencesVersion6Migration extends PreferencesMigrationStep with InfraLo
     if (mode == null || mode == "system-proxy") {
       loggy.debug("changing [service-mode] from [$mode] to [vpn]");
       await sharedPreferences.setString("service-mode", "vpn");
+    }
+  }
+}
+
+/// Локальные порты AxiOm совпадали с апстримом Hiddify — мы его форк, и дефолты
+/// перешли дословно: `mixed-port` 12334, `tproxy` 12335, `redirect` 12336,
+/// `direct` (DNS) 12337, управляющее API ядра 16756.
+///
+/// Если на устройстве стоят оба приложения, они делят одни и те же сокеты на
+/// `127.0.0.1`, а на Android localhost общий для всех приложений вообще. Отсюда
+/// то, что видел владелец: открываешь чужой Hiddify — он показывает «VPN
+/// включён» и наш трафик, потому что читает управляющее API нашего ядра. Второй
+/// эффект тише: кто стартовал позже, не может занять порт.
+class PreferencesVersion7Migration extends PreferencesMigrationStep with InfraLogger {
+  PreferencesVersion7Migration(super.sharedPreferences);
+
+  /// Только значения прежних дефолтов. Порт, выставленный руками, не трогаем:
+  /// его меняли осознанно, и вслепую перебить его — значит сломать чью-то
+  /// рабочую связку с другим софтом на этом порту.
+  static const _moves = {
+    "mixed-port": (12334, 23334),
+    "tproxy-port": (12335, 23335),
+    "redirect-port": (12336, 23336),
+    "direct-port": (12337, 23337),
+    "clash-api-port": (16756, 23756),
+  };
+
+  @override
+  Future<void> migrate() async {
+    for (final entry in _moves.entries) {
+      final (oldDefault, newDefault) = entry.value;
+      final current = sharedPreferences.getInt(entry.key);
+      // Ключа нет — действует новый дефолт, писать ничего не нужно.
+      if (current == null || current != oldDefault) continue;
+      loggy.debug("changing [${entry.key}] from [$current] to [$newDefault]");
+      await sharedPreferences.setInt(entry.key, newDefault);
     }
   }
 }

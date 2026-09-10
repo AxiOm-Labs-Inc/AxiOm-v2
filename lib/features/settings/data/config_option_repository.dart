@@ -123,25 +123,32 @@ abstract class ConfigOptions {
     mapTo: (value) => value.key,
   );
 
+  // 🔴 Локальные порты обязаны отличаться от апстрима Hiddify (12334-12337, clash
+  // api 16756). Мы его форк, дефолты совпадали дословно — и на устройстве, где
+  // стоят оба приложения, они смотрят в одни и те же сокеты на 127.0.0.1.
+  // Следствия, которые видел владелец: чужой Hiddify показывает «VPN включён» и
+  // наш трафик, а тот, кто стартовал вторым, не может занять порт. На Android
+  // localhost общий для всех приложений, поэтому это работает и там, и на Windows.
+  // Диапазон 233xx выбран как заведомо не занятый апстримом.
   static final mixedPort = PreferencesNotifier.create<int, int>(
     "mixed-port",
-    12334,
+    23334,
     validator: (value) => isPort(value.toString()),
   );
 
   static final tproxyPort = PreferencesNotifier.create<int, int>(
     "tproxy-port",
-    12335,
+    23335,
     validator: (value) => isPort(value.toString()),
   );
   static final redirectPort = PreferencesNotifier.create<int, int>(
     "redirect-port",
-    12336,
+    23336,
     validator: (value) => isPort(value.toString()),
   );
   static final directPort = PreferencesNotifier.create<int, int>(
     "direct-port",
-    12337,
+    23337,
     validator: (value) => isPort(value.toString()),
   );
 
@@ -187,9 +194,11 @@ abstract class ConfigOptions {
 
   static final enableClashApi = PreferencesNotifier.create<bool, bool>("enable-clash-api", true);
 
+  // Порт управляющего API ядра. У апстрима 16756 — см. комментарий к mixedPort:
+  // именно через этот сокет чужое приложение читает состояние нашего ядра.
   static final clashApiPort = PreferencesNotifier.create<int, int>(
     "clash-api-port",
-    16756,
+    23756,
     validator: (value) => isPort(value.toString()),
   );
 

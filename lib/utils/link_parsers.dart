@@ -21,7 +21,30 @@ abstract class LinkParser {
   }
 
   // protocols schemas
-  static const protocols = ['hiddify', 'v2ray', 'v2rayn', 'v2rayng', 'clash', 'clashmeta', 'sing-box'];
+  /// Схемы, ссылки которых мы **умеем разбирать**, если их нам передали.
+  /// Принимать чужой формат безвредно: пользователь сам открыл ссылку у нас.
+  static const protocols = [
+    'axiom',
+    'hiddify',
+    'v2ray',
+    'v2rayn',
+    'v2rayng',
+    'clash',
+    'clashmeta',
+    'sing-box',
+  ];
+
+  /// Схемы, которые мы **регистрируем на себя в системе**. Только своя.
+  ///
+  /// Раньше на Windows при каждом запуске перерегистрировался весь список выше —
+  /// то есть `hiddify://`, `clash://` и `sing-box://` уводились у чужих
+  /// приложений, и ссылка, предназначенная Hiddify, открывала AxiOm. Своей же
+  /// схемы `axiom` в списке не было вовсе: на Windows наши собственные ссылки не
+  /// регистрировались, хотя в Android-манифесте `axiom` есть.
+  ///
+  /// Чужие регистрации не снимаем: настоящий Hiddify заберёт их обратно сам при
+  /// следующем запуске — он делает такой же проход по своему списку.
+  static const ownProtocols = ['axiom'];
 
   static ProfileLink? parse(String link) {
     return simple(link) ?? deep(link);
