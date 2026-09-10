@@ -16,7 +16,22 @@ enum ServiceMode {
 
   final String key;
 
-  static ServiceMode get defaultMode => PlatformUtils.isDesktop ? systemProxy : tun;
+  /// На Windows дефолт — `tun`, а не системный прокси. Системный прокси уважает
+  /// только тот софт, который спрашивает настройки WinINET: часть браузеров ходит
+  /// мимо (свои настройки прокси, DoH), приложения со своим сетевым стеком — тем
+  /// более. Наружу это выглядит как «VPN подключён, а сайт не открывается», причём
+  /// выборочно — самый дорогой в поддержке симптом (реальный случай 10.09.2026:
+  /// Telegram Web не открывался ни на одном сервере, хотя серверы и транспорты
+  /// были полностью исправны). `tun` перехватывает трафик всех приложений и такого
+  /// класса отказов не имеет. Требует прав администратора — их запрашивает
+  /// манифест (`windows/runner/runner.exe.manifest`).
+  ///
+  /// Linux и macOS оставлены на системном прокси: там elevation работает иначе,
+  /// а сборок под них мы не выпускаем.
+  static ServiceMode get defaultMode {
+    if (Platform.isWindows) return tun;
+    return PlatformUtils.isDesktop ? systemProxy : tun;
+  }
 
   /// supported service mode based on platform, use this instead of [values] in UI
   static List<ServiceMode> get choices {
