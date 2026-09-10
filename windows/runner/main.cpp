@@ -42,6 +42,61 @@ namespace
     return false;
   }
 
+  // Аргумент в кавычках по правилам разбора командной строки Windows:
+  // обратные слэши удваиваются только перед кавычкой и в конце строки.
+  std::wstring QuoteArgument(const std::wstring &arg)
+  {
+    std::wstring quoted = L"\"";
+    size_t backslashes = 0;
+    for (const wchar_t ch : arg)
+    {
+      if (ch == L'\\')
+      {
+        ++backslashes;
+        continue;
+      }
+      quoted.append(ch == L'"' ? backslashes * 2 : backslashes, L'\\');
+      backslashes = 0;
+      if (ch == L'"')
+      {
+        quoted.push_back(L'\\');
+      }
+      quoted.push_back(ch);
+    }
+    quoted.append(backslashes * 2, L'\\');
+    quoted.push_back(L'"');
+    return quoted;
+  }
+
+  // Аргументы для elevated-копии: свой флаг плюс те, с которыми запустили нас.
+  //
+  // Прокинуть их обязательно: протокол зарегистрирован как `"<exe>" "%1"`, то
+  // есть deep-link `axiom://…` из браузера приходит аргументом. Если его не
+  // передать, повышение молча съедает ссылку — приложение поднимается пустым,
+  // подписка не импортируется, и никакой ошибки при этом не видно.
+  std::wstring RelaunchParameters()
+  {
+    std::wstring parameters = L"--no-elevate";
+    int argc = 0;
+    wchar_t **argv = ::CommandLineToArgvW(::GetCommandLineW(), &argc);
+    if (argv == nullptr)
+    {
+      return parameters;
+    }
+    // argv[0] — путь к самому exe, передавать его не надо.
+    for (int i = 1; i < argc; i++)
+    {
+      const std::wstring arg = argv[i];
+      if (arg == L"--no-elevate")
+      {
+        continue; // свой же флаг не дублируем
+      }
+      parameters += L" " + QuoteArgument(arg);
+    }
+    ::LocalFree(argv);
+    return parameters;
+  }
+
   // Перезапуск себя с запросом прав администратора.
   //
   // true  — elevated-копия стартовала, текущий процесс обязан молча выйти.
@@ -55,12 +110,14 @@ namespace
       return false;
     }
 
+    // Флаг не даёт зациклиться: если повышение почему-то не сработало, вторая
+    // копия уходит в ограниченный режим, а не открывает UAC по кругу.
+    const std::wstring parameters = RelaunchParameters();
+
     SHELLEXECUTEINFOW info = {sizeof(SHELLEXECUTEINFOW)};
     info.lpVerb = L"runas";
     info.lpFile = path;
-    // Флаг не даёт зациклиться: если повышение почему-то не сработало, вторая
-    // копия уходит в ограниченный режим, а не открывает UAC по кругу.
-    info.lpParameters = L"--no-elevate";
+    info.lpParameters = parameters.c_str();
     info.nShow = SW_SHOWNORMAL;
     info.fMask = SEE_MASK_NOASYNC;
     return ::ShellExecuteExW(&info) != FALSE;

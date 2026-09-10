@@ -222,8 +222,9 @@ class PreferencesVersion5Migration extends PreferencesMigrationStep with InfraLo
 ///
 /// Дефолт уже `vpn` (`ServiceMode.defaultMode`), но у установленных приложений в
 /// prefs лежит `system-proxy` — либо от прежнего дефолта, либо от миграции v1.
-/// Только Windows: TUN там поднимается тем же процессом, которому манифест уже
-/// запрашивает права администратора. Linux и macOS не трогаем.
+/// Только Windows: TUN там поднимается тем же процессом, который при старте
+/// сам запрашивает права администратора (`main.cpp`, `RelaunchElevated`; в
+/// манифесте намеренно `asInvoker`). Linux и macOS не трогаем.
 class PreferencesVersion6Migration extends PreferencesMigrationStep with InfraLogger {
   PreferencesVersion6Migration(super.sharedPreferences);
 
