@@ -6,6 +6,7 @@ import 'package:fpdart/fpdart.dart';
 import 'package:hiddify/core/haptic/haptic_service.dart';
 import 'package:hiddify/core/http_client/http_client_provider.dart';
 import 'package:hiddify/core/localization/translations.dart';
+import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/core/model/failures.dart';
 import 'package:hiddify/core/notification/in_app_notification_controller.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
@@ -189,10 +190,11 @@ enum AddProfilePages { options, manual }
 class FreeProfilesNotifier extends _$FreeProfilesNotifier {
   @override
   Future<List<FreeProfile>> build() async {
+    // Своего источника бесплатных конфигов нет — см. Constants.freeProfilesUrl.
+    final url = Constants.freeProfilesUrl;
+    if (url == null) return <FreeProfile>[];
     final httpClient = ref.watch(httpClientProvider);
-    final res = await httpClient.get(
-      'https://raw.githubusercontent.com/hiddify/hiddify-app/refs/heads/main/test.configs/free_configs',
-    );
+    final res = await httpClient.get(url);
     if (res.statusCode == 200) {
       return FreeProfilesModel.fromJson(jsonDecode(res.data.toString()) as Map<String, dynamic>).profiles;
     }

@@ -22,6 +22,7 @@ class NavBar extends ConsumerWidget {
       ).copyWith(bottom: AddProfileModalConst.navBarBottomGap),
       child: Row(
         children: [
+          if (Constants.freeProfilesUrl != null)
           Row(
             key: const ValueKey('free'),
             children: [

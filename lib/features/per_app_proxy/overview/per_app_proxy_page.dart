@@ -5,6 +5,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hiddify/core/localization/translations.dart';
+import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/core/model/region.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
@@ -198,7 +199,7 @@ class PerAppProxyPage extends HookConsumerWidget with PresLogger {
                       ],
                       child: Text(t.common.export),
                     ),
-                    if (ref.watch(ConfigOptions.region) != Region.other)
+                    if (Constants.autoAppsSelectionIssuesUrl != null && ref.watch(ConfigOptions.region) != Region.other)
                       MenuItemButton(
                         child: Text(t.pages.settings.routing.perAppProxy.options.shareToAll),
                         onPressed: () async => await ref
@@ -286,7 +287,7 @@ class PerAppProxyPage extends HookConsumerWidget with PresLogger {
                   scrollController.animateTo(0.0, duration: const Duration(milliseconds: 500), curve: Curves.easeOut),
               child: const Icon(Icons.keyboard_arrow_up_rounded),
             )
-          : (ref.watch(ConfigOptions.region) != Region.other)
+          : (Constants.autoAppsSelectionBaseUrl != null && ref.watch(ConfigOptions.region) != Region.other)
           ? FloatingActionButton.extended(
               onPressed: () async =>
                   await ref.read(bottomSheetsNotifierProvider.notifier).showAutoAppsSelection(mode: mode!),

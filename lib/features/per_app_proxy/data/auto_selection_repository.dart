@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:hiddify/core/http_client/dio_http_client.dart';
 import 'package:hiddify/core/http_client/http_client_provider.dart';
+import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/core/model/region.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/features/per_app_proxy/model/per_app_proxy_mode.dart';
@@ -27,7 +28,7 @@ abstract interface class AutoSelectionRepository {
 class AutoSelectionRepositoryImpl with AppLogger implements AutoSelectionRepository {
   AutoSelectionRepositoryImpl({required Ref ref}) : _ref = ref;
   final Ref _ref;
-  static const _baseUrl = 'https://raw.githubusercontent.com/hiddify/Android-GFW-Apps/refs/heads/master/';
+  static const _baseUrl = Constants.autoAppsSelectionBaseUrl;
 
   @override
   Future<(Set<String>?, AutoSelectionResult)> getByAppProxyMode({AppProxyMode? mode, Region? region}) async =>
@@ -42,6 +43,8 @@ class AutoSelectionRepositoryImpl with AppLogger implements AutoSelectionReposit
       await _makeRequest(mode: AppProxyMode.include, region: region ?? _getRegion());
 
   Future<(Set<String>?, AutoSelectionResult)> _makeRequest({required AppProxyMode mode, Region? region}) async {
+    // Своего источника списков нет — см. Constants.autoAppsSelectionBaseUrl.
+    if (_baseUrl == null) return (null, AutoSelectionResult.notFound);
     try {
       final rs = await _getHttp().get(_genUrl(mode, region ?? _getRegion()));
       if (rs.statusCode == 200) {

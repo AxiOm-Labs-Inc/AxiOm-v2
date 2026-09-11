@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:hiddify/core/localization/translations.dart';
+import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/core/notification/in_app_notification_controller.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/features/per_app_proxy/data/selected_data_provider.dart';
@@ -38,6 +39,7 @@ class PerAppProxyService extends _$PerAppProxyService {
   }
 
   Future<void> _autoSelectionUpdate() async {
+    if (Constants.autoAppsSelectionBaseUrl == null) return;
     final autoRegion = ref.read(Preferences.autoAppsSelectionRegion);
     if (autoRegion == null) return;
     final mode = ref.read(Preferences.perAppProxyMode).toAppProxy();

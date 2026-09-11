@@ -14,6 +14,14 @@ abstract class Constants {
   /// Web storefront with the same tariffs as the in-app sheet.
   static const purchaseSiteUrl = "https://axiom.arcohouse.space";
   static const telegramSupportBotUrl = "https://t.me/AxiOm_Npv_support_bot";
+  // Три источника данных, которые форк получил от апстрима, вели на его GitHub:
+  // списки приложений для автоподбора раздельного туннеля (составлены под
+  // Иран/Китай), кнопка «поделиться выбором» (issue в чужом репозитории) и
+  // бесплатные тестовые конфиги (чужие серверы). Своих источников нет, поэтому
+  // null — функции выключены. Появится своё зеркало — вписать URL сюда.
+  static const String? autoAppsSelectionBaseUrl = null;
+  static const String? autoAppsSelectionIssuesUrl = null;
+  static const String? freeProfilesUrl = null;
   // Своей оферты пока нет, поэтому ведём на лендинг, а не на чужой документ:
   // экран приветствия просил пользователя согласиться с условиями Hiddify.
   // Когда появится страница условий — поменять здесь на неё.

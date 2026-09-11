@@ -621,10 +621,10 @@
     },
     "noActiveProfile": {
       "title": "Choose a profile",
-      "msg": "Let's get started by adding a connection profile that includes your VPN connection details.\n\nDon’t have a VPN server yet? No worries—just follow the tutorial below to set one up quickly and for free.",
+      "msg": "Let's get started by adding a connection profile.\n\nDon’t have a subscription yet? Get one on our website — the button below opens it.",
       "helpBtn": {
-        "label": "Show me how",
-        "url": "https://hiddify.com/manager/"
+        "label": "Get a subscription",
+        "url": "https://axiom.arcohouse.space"
       }
     },
     "unknownDomainsWarning": {

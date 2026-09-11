@@ -96,8 +96,12 @@ dependencies:
   #   git: https://github.com/MichaelStH/flutter_easy_permission.git
   in_app_review: ^2.0.10
   # circle_flags: ^4.0.2
+  # Форк в своей организации (MIT, исходно cedvdb/flutter_circle_flags), закреплён
+  # на том же коммите, что был у апстрима Hiddify, — поведение не меняется.
   circle_flags:
-    git: https://github.com/hiddify-com/flutter_circle_flags.git
+    git:
+      url: https://github.com/AxiOm-Labs-Inc/flutter_circle_flags.git
+      ref: 19d83cba60de91143491a441b5076583bf1681a8
   fixnum: ^1.1.0
   grpc: ^4.0.1
   bottom_navy_bar: ^6.1.0
