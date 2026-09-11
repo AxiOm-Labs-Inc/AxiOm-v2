@@ -47,6 +47,10 @@ class AxiomCoreService with InfraLogger {
         .mapLeft((e) {
           loggy.error(e);
           if (PlatformUtils.isIOS) return;
+          // Пока VPN запускается или работает, провал повторного setup (при
+          // возврате в приложение) — не остановка ядра: не сбрасываем статус
+          // и не показываем красную плашку с gRPC-ошибкой.
+          if (currentState is CoreStarting || currentState is CoreStarted) return;
           statusController.add(const CoreStatus.stopped());
           ref.read(inAppNotificationControllerProvider).showErrorToast(e);
         })
