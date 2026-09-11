@@ -4,7 +4,6 @@ import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/preferences/preferences_provider.dart';
@@ -12,6 +11,7 @@ import 'package:hiddify/features/account/model/account_models.dart';
 import 'package:hiddify/features/account/model/account_state.dart';
 import 'package:hiddify/features/account/notifier/account_notifier.dart';
 import 'package:hiddify/features/account/widget/payment_webview_page.dart';
+import 'package:hiddify/features/account/widget/purchase_success_view.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
 import 'package:hiddify/utils/utils.dart';
@@ -424,70 +424,13 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
 
     // ── экран «оплачено» ─────────────────────────────────────────────────
     if (subUrl.value != null) {
-      final hint = imported.value
-          ? 'Подписка добавлена в профили и выбрана активной — если VPN был '
-              'включён, соединение переподключилось на неё. Если профиль не '
-              'появился, скопируйте ссылку и добавьте вручную.'
-          : 'Скопируйте ссылку и добавьте её в профили вручную.';
       final claim = claimUrl.value;
-
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.check_circle_rounded, color: Colors.green, size: 26),
-                  const SizedBox(width: 10),
-                  Text('Подписка активна', style: theme.textTheme.titleMedium),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(hint, style: theme.textTheme.bodySmall),
-              if (claim != null && claim.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Чтобы привязать покупку к Telegram-аккаунту, откройте ссылку ниже.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-              const SizedBox(height: 12),
-              SelectableText(
-                subUrl.value!,
-                maxLines: 2,
-                style: theme.textTheme.labelSmall?.copyWith(fontFamily: 'monospace'),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: subUrl.value!));
-                    },
-                    icon: const Icon(Icons.copy_rounded, size: 18),
-                    label: const Text('Скопировать'),
-                  ),
-                  if (claim != null && claim.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: () => UriUtils.tryLaunch(Uri.parse(claim)),
-                      icon: const Icon(Icons.link_rounded, size: 18),
-                      label: const Text('Привязать'),
-                    ),
-                  ],
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Готово'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      return PurchaseSuccessView(
+        subUrl: subUrl.value!,
+        imported: imported.value,
+        claimUrl: claim,
+        onOpenClaim: claim == null || claim.isEmpty ? null : () => UriUtils.tryLaunch(Uri.parse(claim)),
+        onDone: () => Navigator.of(context).pop(),
       );
     }
 
@@ -1088,12 +1031,20 @@ class _Segmented<T> extends StatelessWidget {
                                         ),
                                       ),
                                     ),
+                                    // Пометка тоже гибкая: пункт — половина
+                                    // ширины, и «3 месяца выгоднее» при
+                                    // крупном шрифте в неё не помещалось.
                                     if (o.hint != null) ...[
                                       const SizedBox(width: 5),
-                                      Text(
-                                        o.hint!,
-                                        style: theme.textTheme.labelSmall
-                                            ?.copyWith(color: Colors.green.shade600),
+                                      Flexible(
+                                        child: Text(
+                                          o.hint!,
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(color: Colors.green.shade600),
+                                        ),
                                       ),
                                     ],
                                   ],
@@ -1289,7 +1240,11 @@ class _PlanCard extends StatelessWidget {
                 onPressed: enabled && !busy ? onTap : null,
                 child: busy
                     ? _ButtonSpinner(color: cs.primary)
-                    : Text('Взять «${plan.tier}» за ${plan.price} ₽'),
+                    : Text(
+                        'Взять «${plan.tier}» за ${plan.price} ₽',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
               ),
             ),
         ],
@@ -1540,12 +1495,16 @@ class _PayButton extends StatelessWidget {
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            label,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: cs.onPrimary,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
+                          Flexible(
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: cs.onPrimary,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.2,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
