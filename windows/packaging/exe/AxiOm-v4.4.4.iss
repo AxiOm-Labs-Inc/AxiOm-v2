@@ -38,7 +38,11 @@ Filename: "{app}\AxiOm.exe"; Description: "{cm:LaunchProgram,AxiOm}"; Flags: run
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{userappdata}\AxiOm"
-Type: filesandordirs; Name: "{userappdata}\Hiddify"
+; {userappdata}\Hiddify здесь не трогаем: наш exe зовётся AxiOm.exe с первого
+; коммита, а CompanyName/ProductName в Runner.rc — AxiOm, то есть наши данные
+; лежат только в {userappdata}\AxiOm. Каталог Hiddify принадлежит настоящему
+; апстрим-приложению, и удаление AxiOm стирало бы чужие профили и ключи — ровно
+; тот вред, от которого уходит развод идентификаторов (6170fdf, 6e8edcc).
 
 [Code]
 function InitializeSetup(): Boolean;
@@ -46,6 +50,7 @@ var
   ResultCode: Integer;
 begin
   Exec('taskkill', '/F /IM AxiOm.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
-  Exec('taskkill', '/F /IM hiddify.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+  // hiddify.exe не убиваем: это чужой процесс. Установка AxiOm рвала бы
+  // активное соединение настоящего Hiddify на той же машине.
   Result := True;
 end;
