@@ -41,7 +41,9 @@ class _PurchaseOptionsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SafeArea(
-      child: Padding(
+      // Лист без isScrollControlled ограничен 9/16 высоты экрана: на телефоне,
+      // повёрнутом набок, или с крупным шрифтом три варианта в него не влезали.
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
