@@ -27,7 +27,11 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 
 [Files]
-Source: "D:\Creativ\AxiOm_APP_v2\hiddify-app\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Excludes: build\...\Release не чистится между сборками — там лежат hiddify-core.dll
+; и HiddifyCli.exe от 4.4.x. Без исключения установщик вёз бы их снова, а
+; [InstallDelete] (выполняется ДО [Files]) удалял бы их лишь затем, чтобы
+; [Files] тут же положил обратно.
+Source: "D:\Creativ\AxiOm_APP_v2\hiddify-app\build\windows\x64\runner\Release\*"; Excludes: "hiddify-core.dll,HiddifyCli.exe"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
 ; С 4.5.0 ядро ставится как axiom-core.dll, а CLI апстрима не ставится вовсе.
