@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hiddify/core/model/windows_admin.dart';
+import 'package:hiddify/features/window/notifier/window_notifier.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Плашка «приложение работает без прав администратора».
 ///
@@ -12,10 +14,10 @@ import 'package:hiddify/core/model/windows_admin.dart';
 ///
 /// Плашку нельзя скрыть — она исчезает сама, когда приложение перезапущено с
 /// правами.
-class WindowsAdminBanner extends StatelessWidget {
+class WindowsAdminBanner extends ConsumerWidget {
   const WindowsAdminBanner({super.key});
 
-  Future<void> _confirmRelaunch(BuildContext context) async {
+  Future<void> _confirmRelaunch(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -35,11 +37,18 @@ class WindowsAdminBanner extends StatelessWidget {
         ],
       ),
     );
-    if (confirmed ?? false) await WindowsAdmin.relaunchAsAdmin();
+    if (!(confirmed ?? false)) return;
+    // Сначала ставим в очередь помощника (он ждёт смерти этого процесса), и
+    // только потом выходим штатно: `WindowNotifier.exit` останавливает ядро и
+    // снимает настройки системного прокси. Обратный порядок или голый `exit(0)`
+    // оставил бы прокси прописанным на мёртвый порт — у пользователя перестал
+    // бы открываться любой сайт до следующего успешного запуска.
+    await WindowsAdmin.spawnElevatedRelauncher();
+    await ref.read(windowNotifierProvider.notifier).exit();
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (!WindowsAdmin.restricted) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final accent = theme.colorScheme.error;
@@ -52,7 +61,7 @@ class WindowsAdminBanner extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => _confirmRelaunch(context),
+          onTap: () => _confirmRelaunch(context, ref),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
