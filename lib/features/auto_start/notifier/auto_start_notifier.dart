@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:hiddify/core/app_info/app_info_provider.dart';
-import 'package:hiddify/core/model/windows_admin.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/app_info/app_info_provider.dart';
+import 'package:axiom/core/model/windows_admin.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

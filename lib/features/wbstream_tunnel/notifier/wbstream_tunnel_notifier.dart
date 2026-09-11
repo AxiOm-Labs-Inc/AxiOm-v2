@@ -2,17 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:hiddify/core/preferences/general_preferences.dart';
-import 'package:hiddify/core/preferences/preferences_provider.dart';
-import 'package:hiddify/features/connection/data/connection_data_providers.dart';
-import 'package:hiddify/features/connection/model/core_owner.dart';
-import 'package:hiddify/features/profile/data/profile_data_providers.dart';
-import 'package:hiddify/features/settings/data/battery_optimization_repository.dart';
-import 'package:hiddify/features/settings/data/config_option_repository.dart';
-import 'package:hiddify/features/wbstream_tunnel/data/telemost_credentials_service.dart';
-import 'package:hiddify/features/wbstream_tunnel/data/wbstream_relay_service.dart';
-import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:axiom/core/preferences/preferences_provider.dart';
+import 'package:axiom/features/connection/data/connection_data_providers.dart';
+import 'package:axiom/features/connection/model/core_owner.dart';
+import 'package:axiom/features/profile/data/profile_data_providers.dart';
+import 'package:axiom/features/settings/data/battery_optimization_repository.dart';
+import 'package:axiom/features/settings/data/config_option_repository.dart';
+import 'package:axiom/features/wbstream_tunnel/data/telemost_credentials_service.dart';
+import 'package:axiom/features/wbstream_tunnel/data/wbstream_relay_service.dart';
+import 'package:axiom/features/wbstream_tunnel/model/wbstream_settings.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 final wbstreamTunnelNotifierProvider =

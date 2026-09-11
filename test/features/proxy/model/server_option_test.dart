@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hiddify/features/proxy/model/server_option.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart';
+import 'package:axiom/features/proxy/model/server_option.dart';
+import 'package:axiom/axiomcore/generated/v2/hcore/hcore.pb.dart';
 
 void main() {
   group('ServerOption.parse', () {

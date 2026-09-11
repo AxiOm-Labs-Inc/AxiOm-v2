@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:hiddify/core/preferences/general_preferences.dart';
-import 'package:hiddify/features/account/model/account_models.dart';
-import 'package:hiddify/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:axiom/features/account/model/account_models.dart';
+import 'package:axiom/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Feature flags from the latest successful GET /api/app/me.

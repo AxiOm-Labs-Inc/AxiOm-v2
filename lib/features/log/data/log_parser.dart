@@ -1,9 +1,9 @@
 // ignore_for_file: parameter_assignments
 
 import 'package:dartx/dartx.dart';
-import 'package:hiddify/features/log/model/log_entity.dart';
-import 'package:hiddify/features/log/model/log_level.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart' as pb;
+import 'package:axiom/features/log/model/log_entity.dart';
+import 'package:axiom/features/log/model/log_level.dart';
+import 'package:axiom/axiomcore/generated/v2/hcore/hcore.pb.dart' as pb;
 import 'package:tint/tint.dart';
 
 abstract class LogParser {

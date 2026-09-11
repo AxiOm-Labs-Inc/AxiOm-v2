@@ -3,12 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/constants.dart';
-import 'package:hiddify/core/preferences/general_preferences.dart';
-import 'package:hiddify/features/per_app_proxy/model/per_app_proxy_mode.dart';
-import 'package:hiddify/features/per_app_proxy/overview/per_app_proxy_loading_notifier.dart';
-import 'package:hiddify/features/per_app_proxy/overview/per_app_proxy_notifier.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/constants.dart';
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:axiom/features/per_app_proxy/model/per_app_proxy_mode.dart';
+import 'package:axiom/features/per_app_proxy/overview/per_app_proxy_loading_notifier.dart';
+import 'package:axiom/features/per_app_proxy/overview/per_app_proxy_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class AutoAppsSelectionModal extends HookConsumerWidget {

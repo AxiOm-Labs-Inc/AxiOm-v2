@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
-import 'package:hiddify/features/proxy/data/server_list_cache.dart';
+import 'package:axiom/features/profile/notifier/active_profile_notifier.dart';
+import 'package:axiom/features/proxy/data/server_list_cache.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Keeps the offline server-list cache in sync with the active profile.

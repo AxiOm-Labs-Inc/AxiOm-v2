@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:hiddify/core/theme/app_theme_mode.dart';
-import 'package:hiddify/core/theme/theme_extensions.dart';
+import 'package:axiom/core/theme/app_theme_mode.dart';
+import 'package:axiom/core/theme/theme_extensions.dart';
 
 class AppTheme {
   AppTheme(this.mode, this.fontFamily);

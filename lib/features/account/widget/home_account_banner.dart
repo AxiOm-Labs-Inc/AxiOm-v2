@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/app_colors.dart';
-import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
-import 'package:hiddify/features/account/model/account_models.dart';
-import 'package:hiddify/features/account/model/account_state.dart';
-import 'package:hiddify/features/account/notifier/account_notifier.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/app_colors.dart';
+import 'package:axiom/core/router/bottom_sheets/bottom_sheets_notifier.dart';
+import 'package:axiom/features/account/model/account_models.dart';
+import 'package:axiom/features/account/model/account_state.dart';
+import 'package:axiom/features/account/notifier/account_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// A banner on the home page for the Personal Account.

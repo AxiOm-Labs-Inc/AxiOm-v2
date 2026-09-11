@@ -1,6 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:hiddify/features/app_update/model/app_update_failure.dart';
-import 'package:hiddify/features/app_update/model/remote_version_entity.dart';
+import 'package:axiom/features/app_update/model/app_update_failure.dart';
+import 'package:axiom/features/app_update/model/remote_version_entity.dart';
 
 part 'app_update_state.freezed.dart';
 

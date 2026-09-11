@@ -1,11 +1,11 @@
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/constants.dart';
-import 'package:hiddify/core/notification/in_app_notification_controller.dart';
-import 'package:hiddify/core/preferences/preferences_provider.dart';
-import 'package:hiddify/features/settings/data/config_option_repository.dart';
-import 'package:hiddify/features/settings/model/config_option_failure.dart';
-import 'package:hiddify/hiddifycore/hiddify_core_service_provider.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/constants.dart';
+import 'package:axiom/core/notification/in_app_notification_controller.dart';
+import 'package:axiom/core/preferences/preferences_provider.dart';
+import 'package:axiom/features/settings/data/config_option_repository.dart';
+import 'package:axiom/features/settings/model/config_option_failure.dart';
+import 'package:axiom/axiomcore/axiom_core_service_provider.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:loggy/loggy.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -54,7 +54,7 @@ class WarpOptionNotifier extends _$WarpOptionNotifier with AppLogger {
   Future<String?> _genWarpConfig() async {
     final result = await AsyncValue.guard(() async {
       final warp = await ref
-          .read(hiddifyCoreServiceProvider)
+          .read(axiomCoreServiceProvider)
           .generateWarpConfig(
             licenseKey: ref.read(ConfigOptions.warpLicenseKey),
             previousAccountId: ref.read(ConfigOptions.warpAccountId),
@@ -76,7 +76,7 @@ class WarpOptionNotifier extends _$WarpOptionNotifier with AppLogger {
   Future<String?> _genWarp2Config() async {
     final result = await AsyncValue.guard(() async {
       final warp = await ref
-          .read(hiddifyCoreServiceProvider)
+          .read(axiomCoreServiceProvider)
           .generateWarpConfig(
             licenseKey: ref.read(ConfigOptions.warpLicenseKey),
             previousAccountId: ref.read(ConfigOptions.warp2AccountId),

@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/app_colors.dart';
-import 'package:hiddify/core/model/constants.dart';
-import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
-import 'package:hiddify/features/account/model/account_models.dart';
-import 'package:hiddify/features/account/model/account_state.dart';
-import 'package:hiddify/features/account/notifier/account_notifier.dart';
-import 'package:hiddify/features/account/widget/account_subscription_tile.dart';
-import 'package:hiddify/features/account/widget/purchase_options_sheet.dart';
-import 'package:hiddify/features/account/widget/purchase_sheet.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/app_colors.dart';
+import 'package:axiom/core/model/constants.dart';
+import 'package:axiom/core/router/bottom_sheets/bottom_sheets_notifier.dart';
+import 'package:axiom/features/account/model/account_models.dart';
+import 'package:axiom/features/account/model/account_state.dart';
+import 'package:axiom/features/account/notifier/account_notifier.dart';
+import 'package:axiom/features/account/widget/account_subscription_tile.dart';
+import 'package:axiom/features/account/widget/purchase_options_sheet.dart';
+import 'package:axiom/features/account/widget/purchase_sheet.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Personal Account / ЛК block on the Profiles tab (not a separate screen).

@@ -1,6 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:hiddify/features/log/model/log_entity.dart';
-import 'package:hiddify/features/log/model/log_level.dart';
+import 'package:axiom/features/log/model/log_entity.dart';
+import 'package:axiom/features/log/model/log_level.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'logs_overview_state.freezed.dart';

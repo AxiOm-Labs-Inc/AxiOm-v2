@@ -1,7 +1,7 @@
 import 'package:dartx/dartx.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:hiddify/features/connection/model/connection_failure.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart';
+import 'package:axiom/features/connection/model/connection_failure.dart';
+import 'package:axiom/axiomcore/generated/v2/hcore/hcore.pb.dart';
 
 part 'core_status.freezed.dart';
 

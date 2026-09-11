@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hiddify/bootstrap.dart';
-import 'package:hiddify/core/model/environment.dart';
-import 'package:hiddify/core/model/windows_admin.dart';
+import 'package:axiom/bootstrap.dart';
+import 'package:axiom/core/model/environment.dart';
+import 'package:axiom/core/model/windows_admin.dart';
 
 Future<void> main(List<String> args) async {
   // `--no-admin` ставит runner, когда пользователь отказал в повышении прав.

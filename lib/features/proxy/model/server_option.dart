@@ -1,4 +1,4 @@
-import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart';
+import 'package:axiom/axiomcore/generated/v2/hcore/hcore.pb.dart';
 
 /// Parsed Arco VPN server entry from selector group items.
 class ServerOption {

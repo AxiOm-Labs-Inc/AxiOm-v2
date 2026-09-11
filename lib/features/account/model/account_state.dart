@@ -1,5 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:hiddify/features/account/model/account_models.dart';
+import 'package:axiom/features/account/model/account_models.dart';
 
 part 'account_state.freezed.dart';
 

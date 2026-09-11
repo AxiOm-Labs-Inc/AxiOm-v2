@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:hiddify/core/model/constants.dart';
-import 'package:hiddify/core/router/bottom_sheets/widgets/auto_apps_selection_modal.dart';
-import 'package:hiddify/core/router/bottom_sheets/widgets/quick_settings_modal.dart';
-import 'package:hiddify/core/router/go_router/go_router_notifier.dart';
-import 'package:hiddify/features/account/widget/connect_account_sheet.dart';
-import 'package:hiddify/features/per_app_proxy/model/per_app_proxy_mode.dart';
-import 'package:hiddify/features/profile/add/add_profile_modal.dart';
-import 'package:hiddify/features/profile/overview/profiles_modal.dart';
+import 'package:axiom/core/model/constants.dart';
+import 'package:axiom/core/router/bottom_sheets/widgets/auto_apps_selection_modal.dart';
+import 'package:axiom/core/router/bottom_sheets/widgets/quick_settings_modal.dart';
+import 'package:axiom/core/router/go_router/go_router_notifier.dart';
+import 'package:axiom/features/account/widget/connect_account_sheet.dart';
+import 'package:axiom/features/per_app_proxy/model/per_app_proxy_mode.dart';
+import 'package:axiom/features/profile/add/add_profile_modal.dart';
+import 'package:axiom/features/profile/overview/profiles_modal.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'bottom_sheets_notifier.g.dart';

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hiddify/core/model/windows_admin.dart';
-import 'package:hiddify/features/window/notifier/window_notifier.dart';
+import 'package:axiom/core/model/windows_admin.dart';
+import 'package:axiom/features/window/notifier/window_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Плашка «приложение работает без прав администратора».

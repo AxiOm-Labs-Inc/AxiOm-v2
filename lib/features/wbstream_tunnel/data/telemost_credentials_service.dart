@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:hiddify/features/account/data/account_api.dart';
-import 'package:hiddify/features/account/model/account_state.dart';
-import 'package:hiddify/features/account/notifier/account_notifier.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/features/account/data/account_api.dart';
+import 'package:axiom/features/account/model/account_state.dart';
+import 'package:axiom/features/account/notifier/account_notifier.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Секрет Телемоста этого аккаунта — то, чем приложение доказывает держателю

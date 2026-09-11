@@ -1,5 +1,5 @@
-import 'package:hiddify/core/notification/in_app_notification_controller.dart';
-import 'package:hiddify/features/route_rules/notifier/rule_notifier.dart';
+import 'package:axiom/core/notification/in_app_notification_controller.dart';
+import 'package:axiom/features/route_rules/notifier/rule_notifier.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'generic_list_notifier.g.dart';

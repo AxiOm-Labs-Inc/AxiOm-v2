@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hiddify/core/preferences/general_preferences.dart';
-import 'package:hiddify/core/router/deep_linking/my_app_links.dart';
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:axiom/core/router/deep_linking/my_app_links.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 // For temporary storage of the link received from AppLinks.

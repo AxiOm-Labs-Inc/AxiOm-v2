@@ -2,10 +2,10 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:hiddify/core/model/constants.dart';
-import 'package:hiddify/core/preferences/general_preferences.dart';
-import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/model/constants.dart';
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:axiom/features/connection/notifier/connection_notifier.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:tray_manager/tray_manager.dart';
@@ -24,10 +24,6 @@ class WindowNotifier extends _$WindowNotifier with AppLogger {
   Future<void> build() async {
     if (!PlatformUtils.isDesktop) return;
 
-    // if (Platform.isWindows) {
-    //   loggy.debug("ensuring single instance");
-    //   await WindowsSingleInstance.ensureSingleInstance([], "Hiddify");
-    // }
 
     await windowManager.ensureInitialized();
     await initWindowState();

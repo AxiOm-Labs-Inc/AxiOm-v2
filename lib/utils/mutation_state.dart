@@ -1,5 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:hiddify/core/model/failures.dart';
+import 'package:axiom/core/model/failures.dart';
 
 part 'mutation_state.freezed.dart';
 

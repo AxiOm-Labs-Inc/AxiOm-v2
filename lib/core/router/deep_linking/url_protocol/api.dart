@@ -1,4 +1,4 @@
-import 'package:hiddify/core/router/deep_linking/url_protocol/windows_protocol.dart'
+import 'package:axiom/core/router/deep_linking/url_protocol/windows_protocol.dart'
     if (dart.library.js_interop) 'web_url_protocol.dart';
 
 /// Registers a protocol by [scheme] to allow for links in the form `<scheme>://...`

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/app_colors.dart';
-import 'package:hiddify/features/account/model/account_models.dart';
-import 'package:hiddify/features/account/widget/purchase_options_sheet.dart';
-import 'package:hiddify/features/profile/notifier/profile_notifier.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/app_colors.dart';
+import 'package:axiom/features/account/model/account_models.dart';
+import 'package:axiom/features/account/widget/purchase_options_sheet.dart';
+import 'package:axiom/features/profile/notifier/profile_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Tile for a single subscription in the Personal Account section on Profiles.

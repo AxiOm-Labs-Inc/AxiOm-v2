@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/features/home/widget/server_selector_card.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/features/home/widget/server_selector_card.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ProxiesOverviewPage extends HookConsumerWidget {

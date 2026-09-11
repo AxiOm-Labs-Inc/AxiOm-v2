@@ -1,5 +1,5 @@
-name: hiddify
-description: Cross Platform Multi Protocol Proxy Frontend.
+name: axiom
+description: AxiOm VPN client.
 publish_to: "none"
 version: 4.4.4+40404
 
@@ -208,9 +208,9 @@ flutter_native_splash:
     image: assets/images/source/ic_launcher_foreground.png
 
 ffigen:
-  name: "HiddifyCoreNativeLibrary"
-  description: "Bindings to Hiddify Core Library"
-  output: "lib/gen/hiddify_core_generated_bindings.dart"
+  name: "AxiomCoreNativeLibrary"
+  description: "Bindings to the core library"
+  output: "lib/gen/axiom_core_bindings.dart"
   headers:
     entry-points:
       - "hiddify-core/bin/desktop.h"

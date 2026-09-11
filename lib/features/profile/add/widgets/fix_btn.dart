@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
-import 'package:hiddify/core/router/go_router/helper/active_breakpoint_notifier.dart';
+import 'package:axiom/core/router/go_router/helper/active_breakpoint_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class FixBtn extends ConsumerWidget {

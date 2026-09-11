@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
-import 'package:hiddify/core/widget/axiom_branding.dart';
-import 'package:hiddify/features/settings/notifier/config_option/config_option_notifier.dart';
-import 'package:hiddify/features/settings/notifier/reset_tunnel/reset_tunnel_notifier.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/router/dialog/dialog_notifier.dart';
+import 'package:axiom/core/widget/axiom_branding.dart';
+import 'package:axiom/features/settings/notifier/config_option/config_option_notifier.dart';
+import 'package:axiom/features/settings/notifier/reset_tunnel/reset_tunnel_notifier.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 enum ConfigOptionSection {

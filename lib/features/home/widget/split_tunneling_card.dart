@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/preferences/general_preferences.dart';
-import 'package:hiddify/features/per_app_proxy/model/per_app_proxy_mode.dart';
-import 'package:hiddify/utils/platform_utils.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:axiom/features/per_app_proxy/model/per_app_proxy_mode.dart';
+import 'package:axiom/utils/platform_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class SplitTunnelingCard extends ConsumerWidget {

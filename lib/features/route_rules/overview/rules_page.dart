@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/features/route_rules/notifier/rules_notifier.dart';
-import 'package:hiddify/features/route_rules/overview/rule_page.dart';
-import 'package:hiddify/features/route_rules/widget/rule_tile.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/features/route_rules/notifier/rules_notifier.dart';
+import 'package:axiom/features/route_rules/overview/rule_page.dart';
+import 'package:axiom/features/route_rules/widget/rule_tile.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class RulesPage extends HookConsumerWidget {

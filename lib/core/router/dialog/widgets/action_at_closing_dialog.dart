@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/preferences/actions_at_closing.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/preferences/actions_at_closing.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ActionsAtClosingDialog extends HookConsumerWidget {

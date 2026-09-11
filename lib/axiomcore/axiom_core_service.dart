@@ -4,36 +4,35 @@ import 'dart:math';
 
 import 'package:fpdart/fpdart.dart';
 import 'package:grpc/grpc.dart';
-import 'package:hiddify/core/directories/directories_provider.dart';
-import 'package:hiddify/core/model/directories.dart';
-import 'package:hiddify/core/notification/in_app_notification_controller.dart';
-import 'package:hiddify/core/preferences/general_preferences.dart';
-import 'package:hiddify/features/connection/model/connection_failure.dart';
-import 'package:hiddify/features/settings/data/config_option_repository.dart';
-import 'package:hiddify/hiddifycore/core_interface/core_interface.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hcommon/common.pb.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore_service.pbgrpc.dart';
-import 'package:hiddify/hiddifycore/init_signal.dart';
-import 'package:hiddify/singbox/model/singbox_config_option.dart';
-import 'package:hiddify/features/log/model/log_level.dart' as config_log_level;
-import 'package:hiddify/singbox/model/core_status.dart';
-import 'package:hiddify/singbox/model/warp_account.dart';
+import 'package:axiom/core/directories/directories_provider.dart';
+import 'package:axiom/core/model/directories.dart';
+import 'package:axiom/core/notification/in_app_notification_controller.dart';
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:axiom/features/connection/model/connection_failure.dart';
+import 'package:axiom/features/settings/data/config_option_repository.dart';
+import 'package:axiom/axiomcore/core_interface/core_interface.dart';
+import 'package:axiom/axiomcore/generated/v2/hcommon/common.pb.dart';
+import 'package:axiom/axiomcore/generated/v2/hcore/hcore.pb.dart';
+import 'package:axiom/axiomcore/generated/v2/hcore/hcore_service.pbgrpc.dart';
+import 'package:axiom/axiomcore/init_signal.dart';
+import 'package:axiom/singbox/model/singbox_config_option.dart';
+import 'package:axiom/features/log/model/log_level.dart' as config_log_level;
+import 'package:axiom/singbox/model/core_status.dart';
+import 'package:axiom/singbox/model/warp_account.dart';
 
-import 'package:hiddify/hiddifycore/core_interface/core_interface_wrapper_stub.dart'
-    if (dart.library.io) 'package:hiddify/hiddifycore/core_interface/core_interface_wrapper.dart';
-import 'package:hiddify/utils/custom_loggers.dart';
-import 'package:hiddify/utils/platform_utils.dart';
+import 'package:axiom/axiomcore/core_interface/core_interface_wrapper_stub.dart'
+    if (dart.library.io) 'package:axiom/axiomcore/core_interface/core_interface_wrapper.dart';
+import 'package:axiom/utils/custom_loggers.dart';
+import 'package:axiom/utils/platform_utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:loggy/loggy.dart' as loggyl;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:rxdart/rxdart.dart';
 
-class HiddifyCoreService with InfraLogger {
-  HiddifyCoreService(this.ref);
+class AxiomCoreService with InfraLogger {
+  AxiomCoreService(this.ref);
   final Ref ref;
 
-  // CoreHiddifyCoreService() {}
   final core = getCoreInterface();
 
   CoreStatus currentState = const CoreStatus.stopped();
@@ -52,7 +51,7 @@ class HiddifyCoreService with InfraLogger {
           ref.read(inAppNotificationControllerProvider).showErrorToast(e);
         })
         .map((_) {
-          loggy.info("Hiddify-core setup done");
+          loggy.info("core setup done");
           ref.read(coreRestartSignalProvider.notifier).restart();
         })
         .run();

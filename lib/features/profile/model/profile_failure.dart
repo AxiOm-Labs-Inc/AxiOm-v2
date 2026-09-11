@@ -1,7 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/failures.dart';
-import 'package:hiddify/features/settings/model/config_option_failure.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/failures.dart';
+import 'package:axiom/features/settings/model/config_option_failure.dart';
 
 part 'profile_failure.freezed.dart';
 

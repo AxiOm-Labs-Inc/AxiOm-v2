@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:hiddify/core/model/failures.dart';
-import 'package:hiddify/features/proxy/model/proxy_failure.dart';
+import 'package:axiom/core/model/failures.dart';
+import 'package:axiom/features/proxy/model/proxy_failure.dart';
 
 // Sentry analytics removed in AxiOm. These helpers are retained for compilation compatibility.
 

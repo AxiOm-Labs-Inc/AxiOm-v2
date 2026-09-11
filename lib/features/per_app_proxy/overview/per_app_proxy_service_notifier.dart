@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/constants.dart';
-import 'package:hiddify/core/notification/in_app_notification_controller.dart';
-import 'package:hiddify/core/preferences/general_preferences.dart';
-import 'package:hiddify/features/per_app_proxy/data/selected_data_provider.dart';
-import 'package:hiddify/features/per_app_proxy/model/per_app_proxy_mode.dart';
-import 'package:hiddify/features/per_app_proxy/overview/per_app_proxy_notifier.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/constants.dart';
+import 'package:axiom/core/notification/in_app_notification_controller.dart';
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:axiom/features/per_app_proxy/data/selected_data_provider.dart';
+import 'package:axiom/features/per_app_proxy/model/per_app_proxy_mode.dart';
+import 'package:axiom/features/per_app_proxy/overview/per_app_proxy_notifier.dart';
 import 'package:installed_apps/index.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

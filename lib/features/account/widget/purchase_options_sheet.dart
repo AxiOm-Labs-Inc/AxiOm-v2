@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:hiddify/core/model/constants.dart';
-import 'package:hiddify/features/account/widget/purchase_sheet.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/model/constants.dart';
+import 'package:axiom/features/account/widget/purchase_sheet.dart';
+import 'package:axiom/utils/utils.dart';
 
 /// Where to buy: the expiry banner offers all three routes instead of deciding
 /// for the user.

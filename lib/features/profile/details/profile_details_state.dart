@@ -1,5 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:hiddify/features/profile/model/profile_entity.dart';
+import 'package:axiom/features/profile/model/profile_entity.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 part 'profile_details_state.freezed.dart';

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:hiddify/utils/validators.dart';
+import 'package:axiom/utils/validators.dart';
 
 typedef ProfileLink = ({String url, String name});
 
@@ -16,7 +16,6 @@ abstract class LinkParser {
       query: uri.query,
       fragment: name ?? uri.fragment,
     );
-    // return 'hiddify://import/$modifiedUri';
     return '$modifiedUri';
   }
 

@@ -1,9 +1,9 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
-import 'package:hiddify/core/http_client/dio_http_client.dart';
-import 'package:hiddify/core/model/constants.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/http_client/dio_http_client.dart';
+import 'package:axiom/core/model/constants.dart';
+import 'package:axiom/utils/utils.dart';
 
 /// Thrown when the server rejects the session token (HTTP 401) — the session
 /// is dead and must be discarded, as opposed to a transient network failure.

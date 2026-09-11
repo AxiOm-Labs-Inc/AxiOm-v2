@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/constants.dart';
-import 'package:hiddify/core/router/adaptive_layout/shell_route_action.dart';
-import 'package:hiddify/core/router/go_router/routing_config_notifier.dart';
-import 'package:hiddify/core/widget/axiom_branding.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/constants.dart';
+import 'package:axiom/core/router/adaptive_layout/shell_route_action.dart';
+import 'package:axiom/core/router/go_router/routing_config_notifier.dart';
+import 'package:axiom/core/widget/axiom_branding.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class MyAdaptiveLayout extends HookConsumerWidget {

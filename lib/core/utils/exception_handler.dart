@@ -1,5 +1,5 @@
 import 'package:fpdart/fpdart.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:rxdart/rxdart.dart';
 
 mixin ExceptionHandler implements LoggerMixin {

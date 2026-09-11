@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/failures.dart';
-import 'package:hiddify/core/preferences/preferences_provider.dart';
-import 'package:hiddify/core/utils/preferences_utils.dart';
-import 'package:hiddify/features/proxy/data/server_list_cache.dart';
-import 'package:hiddify/features/proxy/model/proxy_failure.dart';
-import 'package:hiddify/features/proxy/model/server_option.dart';
-import 'package:hiddify/features/proxy/overview/proxies_overview_notifier.dart';
-import 'package:hiddify/features/settings/data/config_option_repository.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/failures.dart';
+import 'package:axiom/core/preferences/preferences_provider.dart';
+import 'package:axiom/core/utils/preferences_utils.dart';
+import 'package:axiom/features/proxy/data/server_list_cache.dart';
+import 'package:axiom/features/proxy/model/proxy_failure.dart';
+import 'package:axiom/features/proxy/model/server_option.dart';
+import 'package:axiom/features/proxy/overview/proxies_overview_notifier.dart';
+import 'package:axiom/features/settings/data/config_option_repository.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class ServerSelectorCard extends HookConsumerWidget {

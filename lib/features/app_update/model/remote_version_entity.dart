@@ -1,5 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:hiddify/core/model/environment.dart';
+import 'package:axiom/core/model/environment.dart';
 
 part 'remote_version_entity.freezed.dart';
 

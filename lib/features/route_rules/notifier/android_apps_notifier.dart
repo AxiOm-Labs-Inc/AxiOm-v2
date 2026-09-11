@@ -2,8 +2,8 @@
 import 'package:dio/dio.dart';
 // ignore: depend_on_referenced_packages
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:hiddify/features/route_rules/notifier/rule_notifier.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/features/route_rules/notifier/rule_notifier.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';

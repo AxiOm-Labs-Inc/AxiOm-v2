@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:hiddify/features/log/data/log_data_providers.dart';
-import 'package:hiddify/features/log/model/log_entity.dart';
-import 'package:hiddify/features/log/model/log_level.dart';
-import 'package:hiddify/features/log/overview/logs_overview_state.dart';
-import 'package:hiddify/hiddifycore/init_signal.dart';
-import 'package:hiddify/utils/riverpod_utils.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/features/log/data/log_data_providers.dart';
+import 'package:axiom/features/log/model/log_entity.dart';
+import 'package:axiom/features/log/model/log_level.dart';
+import 'package:axiom/features/log/overview/logs_overview_state.dart';
+import 'package:axiom/axiomcore/init_signal.dart';
+import 'package:axiom/utils/riverpod_utils.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:rxdart/rxdart.dart';
 

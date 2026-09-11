@@ -1,6 +1,6 @@
-import 'package:hiddify/core/model/directories.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore_service.pbgrpc.dart';
-import 'package:hiddify/singbox/model/core_status.dart';
+import 'package:axiom/core/model/directories.dart';
+import 'package:axiom/axiomcore/generated/v2/hcore/hcore_service.pbgrpc.dart';
+import 'package:axiom/singbox/model/core_status.dart';
 
 class CoreInterface {
   late CoreClient fgClient;

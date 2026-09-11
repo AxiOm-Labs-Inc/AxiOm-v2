@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:hiddify/features/wbstream_tunnel/model/wbstream_settings.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/features/wbstream_tunnel/model/wbstream_settings.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// A status line from the native relay controller.

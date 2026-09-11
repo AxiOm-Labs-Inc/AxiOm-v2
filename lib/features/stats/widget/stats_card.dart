@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
-import 'package:hiddify/core/widget/spaced_list_widget.dart';
+import 'package:axiom/core/widget/spaced_list_widget.dart';
 
 typedef PresentableStat = ({Widget label, Widget data, String? semanticLabel});
 

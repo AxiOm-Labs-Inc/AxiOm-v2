@@ -1,16 +1,16 @@
 import 'dart:convert';
 import 'dart:developer';
 
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/model/failures.dart';
-import 'package:hiddify/core/notification/in_app_notification_controller.dart';
-import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
-import 'package:hiddify/features/profile/data/profile_data_providers.dart';
-import 'package:hiddify/features/profile/data/profile_repository.dart';
-import 'package:hiddify/features/profile/details/profile_details_state.dart';
-import 'package:hiddify/features/profile/model/profile_entity.dart';
-import 'package:hiddify/features/profile/model/profile_failure.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/model/failures.dart';
+import 'package:axiom/core/notification/in_app_notification_controller.dart';
+import 'package:axiom/core/router/dialog/dialog_notifier.dart';
+import 'package:axiom/features/profile/data/profile_data_providers.dart';
+import 'package:axiom/features/profile/data/profile_repository.dart';
+import 'package:axiom/features/profile/details/profile_details_state.dart';
+import 'package:axiom/features/profile/model/profile_entity.dart';
+import 'package:axiom/features/profile/model/profile_failure.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'profile_details_notifier.g.dart';

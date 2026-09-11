@@ -4,28 +4,28 @@ import 'dart:math';
 
 import 'package:ffi/ffi.dart';
 import 'package:grpc/grpc.dart';
-import 'package:hiddify/core/model/directories.dart';
-import 'package:hiddify/gen/hiddify_core_generated_bindings.dart';
-import 'package:hiddify/hiddifycore/core_interface/core_interface.dart';
-import 'package:hiddify/hiddifycore/core_interface/mtls_channel_cred.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore_service.pbgrpc.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hello/hello.pb.dart';
-import 'package:hiddify/hiddifycore/generated/v2/hello/hello_service.pbgrpc.dart';
-import 'package:hiddify/utils/custom_loggers.dart';
+import 'package:axiom/core/model/directories.dart';
+import 'package:axiom/gen/axiom_core_bindings.dart';
+import 'package:axiom/axiomcore/core_interface/core_interface.dart';
+import 'package:axiom/axiomcore/core_interface/mtls_channel_cred.dart';
+import 'package:axiom/axiomcore/generated/v2/hcore/hcore.pb.dart';
+import 'package:axiom/axiomcore/generated/v2/hcore/hcore_service.pbgrpc.dart';
+import 'package:axiom/axiomcore/generated/v2/hello/hello.pb.dart';
+import 'package:axiom/axiomcore/generated/v2/hello/hello_service.pbgrpc.dart';
+import 'package:axiom/utils/custom_loggers.dart';
 
 import 'package:loggy/loggy.dart';
 
 import 'package:path/path.dart' as p;
 
-final _logger = Loggy('HiddifyCoreFFI');
+final _logger = Loggy('AxiomCoreFFI');
 typedef StopFunc = Pointer<Utf8> Function();
 typedef StopFuncDart = Pointer<Utf8> Function();
 
 class CoreInterfaceDesktop extends CoreInterface with InfraLogger {
-  static final HiddifyCoreNativeLibrary _box = _gen();
+  static final AxiomCoreNativeLibrary _box = _gen();
 
-  static HiddifyCoreNativeLibrary _gen() {
+  static AxiomCoreNativeLibrary _gen() {
     String fullPath = "";
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
       fullPath = "hiddify-core";
@@ -44,7 +44,7 @@ class CoreInterfaceDesktop extends CoreInterface with InfraLogger {
     // final errPtr2 = stopFunc();
     // final err = errPtr2.cast<Utf8>().toDartString();
 
-    return HiddifyCoreNativeLibrary(lib);
+    return AxiomCoreNativeLibrary(lib);
   }
 
   Future<bool> isMusl() async {

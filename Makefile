@@ -133,8 +133,8 @@ generate_go_protoc:
 	make -C hiddify-core -f Makefile protos
 	echo "SED: $(SED)"
 generate_dart_protoc:
-	mkdir -p lib/hiddifycore/generated
-	protoc --dart_out=grpc:lib/hiddifycore/generated --proto_path=hiddify-core/  $(shell find hiddify-core/v2 hiddify-core/extension -name "*.proto") 	google/protobuf/timestamp.proto ; \
+	mkdir -p lib/axiomcore/generated
+	protoc --dart_out=grpc:lib/axiomcore/generated --proto_path=hiddify-core/  $(shell find hiddify-core/v2 hiddify-core/extension -name "*.proto") 	google/protobuf/timestamp.proto ; \
 
 .PHONY: protos
 protos: generate_go_protoc generate_kotlin_protos generate_dart_protoc

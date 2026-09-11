@@ -1,11 +1,11 @@
 import 'package:dartx/dartx.dart';
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
-import 'package:hiddify/core/app_info/app_info_provider.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/features/connection/model/connection_status.dart';
-import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
-import 'package:hiddify/gen/assets.gen.dart';
+import 'package:axiom/core/app_info/app_info_provider.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/features/connection/model/connection_status.dart';
+import 'package:axiom/features/connection/notifier/connection_notifier.dart';
+import 'package:axiom/gen/assets.gen.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 class AxiOmLogoIcon extends HookConsumerWidget {

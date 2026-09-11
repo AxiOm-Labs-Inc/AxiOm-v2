@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:hiddify/core/model/app_colors.dart';
-import 'package:hiddify/features/account/model/account_state.dart';
-import 'package:hiddify/features/account/notifier/account_notifier.dart';
-import 'package:hiddify/features/account/widget/purchase_options_sheet.dart';
-import 'package:hiddify/features/profile/data/profile_parser.dart';
-import 'package:hiddify/features/profile/model/profile_entity.dart';
-import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
+import 'package:axiom/core/model/app_colors.dart';
+import 'package:axiom/features/account/model/account_state.dart';
+import 'package:axiom/features/account/notifier/account_notifier.dart';
+import 'package:axiom/features/account/widget/purchase_options_sheet.dart';
+import 'package:axiom/features/profile/data/profile_parser.dart';
+import 'package:axiom/features/profile/model/profile_entity.dart';
+import 'package:axiom/features/profile/overview/profiles_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 /// Session-only dismissal of the expiry banner: hidden until the app restarts

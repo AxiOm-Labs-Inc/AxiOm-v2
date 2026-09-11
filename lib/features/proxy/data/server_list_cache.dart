@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:hiddify/core/preferences/preferences_provider.dart';
-import 'package:hiddify/features/profile/data/profile_data_providers.dart';
-import 'package:hiddify/features/proxy/model/server_option.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/preferences/preferences_provider.dart';
+import 'package:axiom/features/profile/data/profile_data_providers.dart';
+import 'package:axiom/features/proxy/model/server_option.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -5,28 +5,28 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
-import 'package:hiddify/core/app_info/app_info_provider.dart';
-import 'package:hiddify/core/directories/directories_provider.dart';
-import 'package:hiddify/core/localization/translations.dart';
-import 'package:hiddify/core/logger/logger.dart';
-import 'package:hiddify/core/logger/logger_controller.dart';
-import 'package:hiddify/core/model/environment.dart';
-import 'package:hiddify/core/preferences/general_preferences.dart';
-import 'package:hiddify/core/preferences/preferences_migration.dart';
-import 'package:hiddify/core/preferences/preferences_provider.dart';
-import 'package:hiddify/features/account/notifier/account_features_provider.dart';
-import 'package:hiddify/features/app/widget/app.dart';
-import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
-import 'package:hiddify/features/auto_start/notifier/auto_start_notifier.dart';
-import 'package:hiddify/features/log/data/log_data_providers.dart';
-import 'package:hiddify/features/profile/data/profile_data_providers.dart';
-import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
-import 'package:hiddify/features/proxy/overview/server_list_cache_watcher.dart';
-import 'package:hiddify/features/system_tray/notifier/system_tray_notifier.dart';
-import 'package:hiddify/features/window/notifier/window_notifier.dart';
-import 'package:hiddify/hiddifycore/hiddify_core_service_provider.dart';
-import 'package:hiddify/riverpod_observer.dart';
-import 'package:hiddify/utils/utils.dart';
+import 'package:axiom/core/app_info/app_info_provider.dart';
+import 'package:axiom/core/directories/directories_provider.dart';
+import 'package:axiom/core/localization/translations.dart';
+import 'package:axiom/core/logger/logger.dart';
+import 'package:axiom/core/logger/logger_controller.dart';
+import 'package:axiom/core/model/environment.dart';
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:axiom/core/preferences/preferences_migration.dart';
+import 'package:axiom/core/preferences/preferences_provider.dart';
+import 'package:axiom/features/account/notifier/account_features_provider.dart';
+import 'package:axiom/features/app/widget/app.dart';
+import 'package:axiom/features/app_update/notifier/app_update_notifier.dart';
+import 'package:axiom/features/auto_start/notifier/auto_start_notifier.dart';
+import 'package:axiom/features/log/data/log_data_providers.dart';
+import 'package:axiom/features/profile/data/profile_data_providers.dart';
+import 'package:axiom/features/profile/notifier/active_profile_notifier.dart';
+import 'package:axiom/features/proxy/overview/server_list_cache_watcher.dart';
+import 'package:axiom/features/system_tray/notifier/system_tray_notifier.dart';
+import 'package:axiom/features/window/notifier/window_notifier.dart';
+import 'package:axiom/axiomcore/axiom_core_service_provider.dart';
+import 'package:axiom/riverpod_observer.dart';
+import 'package:axiom/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async {
@@ -86,7 +86,7 @@ Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async
   container.read(serverListCacheWatcherProvider);
   // Shut the tunnel down whenever the Telemost gate closes.
   container.read(telemostGateGuardProvider);
-  await _init("hiddify-core", () => container.read(hiddifyCoreServiceProvider).init());
+  await _init("core", () => container.read(axiomCoreServiceProvider).init());
 
   if (!kIsWeb) {
     // await _safeInit(

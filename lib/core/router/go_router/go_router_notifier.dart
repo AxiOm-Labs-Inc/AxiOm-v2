@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:hiddify/core/router/go_router/refresh_listenable.dart';
-import 'package:hiddify/core/router/go_router/routing_config_notifier.dart';
+import 'package:axiom/core/router/go_router/refresh_listenable.dart';
+import 'package:axiom/core/router/go_router/routing_config_notifier.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'go_router_notifier.g.dart';

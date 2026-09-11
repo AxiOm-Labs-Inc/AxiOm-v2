@@ -1,9 +1,9 @@
 import 'package:drift/drift.dart';
-import 'package:hiddify/core/db/db.dart';
-import 'package:hiddify/features/per_app_proxy/model/per_app_proxy_backup.dart';
-import 'package:hiddify/features/per_app_proxy/model/per_app_proxy_mode.dart';
-import 'package:hiddify/features/per_app_proxy/model/pkg_flag.dart';
-import 'package:hiddify/utils/custom_loggers.dart';
+import 'package:axiom/core/db/db.dart';
+import 'package:axiom/features/per_app_proxy/model/per_app_proxy_backup.dart';
+import 'package:axiom/features/per_app_proxy/model/per_app_proxy_mode.dart';
+import 'package:axiom/features/per_app_proxy/model/pkg_flag.dart';
+import 'package:axiom/utils/custom_loggers.dart';
 
 part 'app_proxy_data_source.g.dart';
 
