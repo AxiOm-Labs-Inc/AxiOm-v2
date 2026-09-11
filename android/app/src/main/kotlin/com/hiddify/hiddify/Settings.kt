@@ -150,8 +150,18 @@ object Settings {
             val encoded = Base64.encodeToString(value, Base64.DEFAULT)
             preferences.edit().putString(SettingsKey.GRPC_FLUTTER_PUBLIC_KEY, encoded).apply()
         }
+    // Порт gRPC режима службы. Приходит из Dart (`portBack` в
+    // core_interface_mobile.dart) при каждом `start`, но до первого запуска
+    // приложения после обновления здесь лежит сохранённое старое значение —
+    // 17078/17079, как у апстрима Hiddify. Always-on VPN, поднятый системой при
+    // загрузке, слушал бы на нём, и Hiddify на том же телефоне снова находил бы
+    // наше ядро. Поэтому старые значения переводим на новые прямо при чтении.
     var grpcServiceModePort: Int
-        get() = preferences.getInt(SettingsKey.GRPC_PORT, 17078)!!
+        get() = when (val port = preferences.getInt(SettingsKey.GRPC_PORT, 23078)) {
+            17078 -> 23078
+            17079 -> 23079
+            else -> port
+        }
         set(value) = preferences.edit().putInt(SettingsKey.GRPC_PORT, value).apply()
 
     var startCoreAfterStartingService: Boolean

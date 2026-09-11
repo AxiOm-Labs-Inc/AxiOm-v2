@@ -56,7 +56,12 @@ class CoreInterfaceDesktop extends CoreInterface with InfraLogger {
     }
   }
 
-  final port = 17078;
+  // Порт gRPC между UI и ядром. Не 17078, как у апстрима Hiddify: канал без
+  // авторизации (`ChannelCredentials.insecure()`), а `setup()` сначала пробует
+  // `sayHello` на этом порту и при ответе подключается к найденному ядру как к
+  // своему. С общим портом Hiddify, открытый рядом, цеплялся к нашему ядру и
+  // показывал «VPN включён». См. также core_interface_mobile.dart.
+  final port = 23078;
   static String generateRandomPassword(int length) {
     const characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     final random = Random();
