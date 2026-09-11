@@ -64,7 +64,7 @@ Filename: "{app}\\{{EXECUTABLE_NAME}}"; Description: "{cm:LaunchProgram,{{DISPLA
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{userappdata}\AxiOm"
-Type: filesandordirs; Name: "{userappdata}\Hiddify"
+; {userappdata}\Hiddify не трогаем: это данные настоящего Hiddify (см. 36cd51c).
 
 [Code]
 function InitializeSetup(): Boolean;
@@ -72,6 +72,6 @@ var
   ResultCode: Integer;
 begin
   Exec('taskkill', '/F /IM AxiOm.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
-  Exec('taskkill', '/F /IM hiddify.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+  // hiddify.exe не убиваем: это чужой процесс (см. 36cd51c).
   Result := True;
 end;
