@@ -1,7 +1,7 @@
 display_name: AxiOm
 publisher_display_name: AxiOm
 identity_name: AxiOm.AxiOm
-msix_version: 4.1.2.0
+msix_version: 4.5.0.0
 logo_path: windows\runner\resources\app_icon.ico
 capabilities: internetClient, internetClientServer, privateNetworkClientServer
 languages: ar, en-us, es-es, fa-ir, fr-fr, id-id, pt-br, ru-ru, tr-tr, zh-cn, zh-tw
