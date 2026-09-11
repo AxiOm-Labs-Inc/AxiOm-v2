@@ -82,7 +82,19 @@ class AppDirectories extends _$AppDirectories with InfraLogger {
 
   static Directory getPortableDirectory() {
     final exeDir = File(Platform.resolvedExecutable).parent;
-    return Directory(p.join(exeDir.path, 'hiddify_portable_data'));
+    final dir = Directory(p.join(exeDir.path, 'axiom_portable_data'));
+    // До 4.5.0 каталог назывался по апстриму. Переносим один раз; если
+    // переименовать не вышло (нет прав, файлы заняты) — работаем со старым,
+    // чтобы пользователь портативной версии не остался без своих данных.
+    final legacy = Directory(p.join(exeDir.path, 'hiddify_portable_data'));
+    if (!dir.existsSync() && legacy.existsSync()) {
+      try {
+        legacy.renameSync(dir.path);
+      } catch (_) {
+        return legacy;
+      }
+    }
+    return dir;
   }
 
   static Future<bool> checkDirectoryAccess(Directory dir) async {
