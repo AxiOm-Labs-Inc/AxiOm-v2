@@ -207,6 +207,13 @@ class AxiomCoreService with InfraLogger {
   TaskEither<String, Unit> stop() {
     return TaskEither(() async {
       loggy.debug("stopping");
+      // Остановка — две команды: gRPC stop и затем core.stop() (сервис Android
+      // гасит ядро ещё раз). На вторую фоновое ядро шлёт в поток статуса
+      // STOPPING и STOPPED «уже остановлено» — уже после нашего stopped ниже:
+      // лишний DISCONNECTING и CONNECTION FAILURE createService. Отписываемся
+      // заранее; start() на мобильном подписывается заново (на десктопе канал
+      // один и заново не подписывается — там не трогаем).
+      if (!core.isSingleChannel()) await stopListenSingle("bgStatusListener");
       var errMsg = "";
       try {
         final res = await core.bgClient.stop(Empty());
