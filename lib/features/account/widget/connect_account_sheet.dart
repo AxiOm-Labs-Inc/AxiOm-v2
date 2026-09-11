@@ -78,7 +78,9 @@ class ConnectAccountSheet extends HookConsumerWidget with PresLogger {
     final isDesktop = !PlatformUtils.isMobile;
 
     return SafeArea(
-      child: Padding(
+      // QR-код, две кнопки и таймер — около 630 dp: на невысоком телефоне или с
+      // крупным шрифтом низ листа с «Отмена» обрезался без прокрутки.
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -269,10 +271,12 @@ class _PollingIndicator extends StatelessWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
         const SizedBox(width: 10),
-        Text(
-          text,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+        Flexible(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ],
