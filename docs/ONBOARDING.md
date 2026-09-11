@@ -84,6 +84,14 @@ flutter build windows --release --dart-define=DEVICE_API_KEY=<ключ>
 приложении молча пропадёт (не упадёт, просто не покажет цифру) — известная готча,
 проверялась на боевых релизах.
 
+**`librelay.so` не в git — перед релизной сборкой пересобрать его из `main`
+`AxiOm-relay-dev`** (`relay/`, `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` и
+`GOARCH=arm GOARM=7`, `-trimpath -ldflags="-s -w"`, вывод в `jniLibs/<abi>/`).
+Устаревший бинарь молча ломает Телемост: 4.4.2 и 4.4.3 вышли с relay от 04.09 16:12 —
+без ротации серверного WG-ключа и с ранним CONNECTED до CONFIG (в логе
+`connected but no config received`). Проверка: `grep -ac gatedStatus
+android/app/src/main/jniLibs/arm64-v8a/librelay.so` — не 0.
+
 При смене иконки/сплэша — удалить `build\windows\x64\CMakeCache.txt`, не весь
 `flutter clean` (полная пересборка ядра долгая и не нужна).
 

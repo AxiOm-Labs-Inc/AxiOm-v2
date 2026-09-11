@@ -577,7 +577,9 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   }
 
   void _onStatus(WbstreamStatusEvent event) {
-    loggy.info('wbstream status: ${event.status} ${event.message ?? ''}');
+    // Тело config не логируем: в нём приватный WG-ключ и пароль SOCKS relay.
+    final message = event.status == 'config' ? '(${event.message?.length ?? 0} bytes)' : event.message ?? '';
+    loggy.info('wbstream status: ${event.status} $message');
     switch (event.status) {
       case 'starting':
         if (state is! WbstreamConnected) state = const WbstreamStarting();
