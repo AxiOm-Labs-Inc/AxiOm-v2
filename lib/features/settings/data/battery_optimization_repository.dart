@@ -9,7 +9,7 @@ abstract interface class BatteryOptimizationRepository {
 }
 
 class BatteryOptimizationRepositoryImpl with ExceptionHandler, InfraLogger implements BatteryOptimizationRepository {
-  final _methodChannel = const MethodChannel("com.hiddify.app/platform");
+  final _methodChannel = const MethodChannel("app.axiom/platform");
 
   @override
   Future<bool?> isIgnoringBatteryOptimizations() async {

@@ -18,13 +18,13 @@ class WbstreamStatusEvent {
   final String? message;
 }
 
-/// Dart-обёртка над MethodChannel `com.hiddify.app/tunnel` и парным
+/// Dart-обёртка над MethodChannel `app.axiom/tunnel` и парным
 /// EventChannel (см. TunnelMethodHandler.kt). Комнату и сборку
 /// конфига делает нативный relay; приложение шлёт только секрет и параметры
 /// видео и получает статусы (включая готовый конфиг).
 class WbstreamRelayService with InfraLogger {
-  static const _channel = MethodChannel('com.hiddify.app/tunnel');
-  static const _statusChannel = EventChannel('com.hiddify.app/tunnel.status');
+  static const _channel = MethodChannel('app.axiom/tunnel');
+  static const _statusChannel = EventChannel('app.axiom/tunnel.status');
 
   /// Запускает relay. [tmSecret] — секрет Телемоста аккаунта (hex); пусто =
   /// подключение без авторизации, пока держатели не в strict. Возвращает

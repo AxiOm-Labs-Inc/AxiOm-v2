@@ -20,7 +20,7 @@ import 'package:rxdart/rxdart.dart';
 final _logger = Loggy('FFIAxiomCoreService');
 
 class CoreInterfaceMobile extends CoreInterface with InfraLogger {
-  static const channelPrefix = "com.hiddify.app";
+  static const channelPrefix = "app.axiom";
   static const methodChannel = MethodChannel("$channelPrefix/method");
   static const statusChannel = EventChannel("$channelPrefix/service.status", JSONMethodCodec());
   static const alertsChannel = EventChannel("$channelPrefix/service.alerts", JSONMethodCodec());

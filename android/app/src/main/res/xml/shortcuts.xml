@@ -7,7 +7,7 @@
         android:shortcutShortLabel="@string/quick_toggle">
         <intent
             android:action="android.intent.action.MAIN"
-            android:targetClass="com.hiddify.hiddify.ShortcutActivity"
+            android:targetClass="app.axiom.ShortcutActivity"
             android:targetPackage="app.axiom.vpn" />
     </shortcut>
 </shortcuts>
