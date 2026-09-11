@@ -1,22 +1,22 @@
 ---
 name: Bug Report
-description: Report a bug encountered while using Hiddify
+description: Report a bug encountered while using AxiOm
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
         ## Only English
-        For access to our user forums, please join [our Telegram group](https://t.me/hiddify_board).
+        For questions, use [our support bot](https://t.me/AxiOm_Npv_support_bot).
 
         Please make sure to provide a descriptive, deterministic, and reproducible report. It saves time for both the developers and users who are looking for solutions. Providing as much information as possible, including screenshots and logs, is highly appreciated. This will help us to better understand the issue and respond more effectively.
 
-        Please DO NOT use this template to ask questions. You can join [our Telegram group](https://t.me/hiddify_board) or [our Website](https://hiddify.com/app) to ask questions. This template is strictly for reporting bugs.
+        Please DO NOT use this template to ask questions. You can ask them in [our support bot](https://t.me/AxiOm_Npv_support_bot) or on [our website](https://axiom.arcohouse.space). This template is strictly for reporting bugs.
   - type: checkboxes
     id: confirm-search
     attributes:
       label: Search first
-      description: Please search [existing issues](https://github.com/hiddify/hiddify-app/issues) before reporting.
+      description: Please search [existing issues](https://github.com/AxiOm-Labs-Inc/AxiOm-v2/issues) before reporting.
       options:
         - label: I searched and no similar issues were found
           required: true
@@ -33,7 +33,6 @@ body:
         - Linux
         - Android TV
         - iOS
-        - HiddifyCli (Core)
     validations:
       required: true
   - type: input
@@ -46,8 +45,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Hiddify Version
-      description: "What version of Hiddify are you using?"
+      label: AxiOm Version
+      description: "What version of AxiOm are you using?"
     validations:
       required: true
   - type: textarea
