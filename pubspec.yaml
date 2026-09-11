@@ -178,8 +178,6 @@ flutter:
     - assets/images/tray_icon_connected.png
     - assets/images/tray_icon_disconnected.ico
     - assets/images/tray_icon_disconnected.png
-    - assets/images/connect_norouz.PNG
-    - assets/images/disconnect_norouz.PNG
     - assets/images/world_map.png
     - assets/images/source/ic_launcher_border.png
 
@@ -205,7 +203,7 @@ flutter_native_splash:
   android_gravity: center
   android_12:
     color: "#ffffff"
-    image: assets/images/source/ic_launcher_foreground.png
+    image: assets/images/source/ic_launcher_splash.png
 
 ffigen:
   name: "AxiomCoreNativeLibrary"

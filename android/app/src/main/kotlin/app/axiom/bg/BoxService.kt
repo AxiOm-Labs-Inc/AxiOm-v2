@@ -365,7 +365,7 @@ class BoxService(
         val builder =
             NotificationCompat.Builder(service, notification.identifier).setShowWhen(false)
                 .setContentTitle(notification.title).setContentText(notification.body)
-                .setOnlyAlertOnce(true).setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setOnlyAlertOnce(true).setSmallIcon(R.drawable.ic_stat_logo)
                 .setCategory(NotificationCompat.CATEGORY_EVENT)
                 .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
         if (!notification.subtitle.isNullOrBlank()) {
