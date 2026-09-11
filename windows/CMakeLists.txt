@@ -1,6 +1,6 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(hiddify LANGUAGES CXX)
+project(axiom LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
@@ -81,17 +81,18 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
-# install(FILES "../hiddify-core/bin/hiddify-core.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-#  COMPONENT Runtime)
-
+# Ядро — бинарь апстрима (hiddify-core/bin, скачивается Makefile), но в папку
+# программы кладётся под своим именем: загружается по полному пути через
+# DynamicLibrary.open (core_interface_desktop.dart), а Go c-shared DLL от имени
+# своего файла не зависит.
 install(FILES "../hiddify-core/bin/hiddify-core.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-COMPONENT Runtime RENAME hiddify-core.dll)
+COMPONENT Runtime RENAME axiom-core.dll)
 
+# libcronet.dll НЕ переименовывать: её загружает само ядро по этому имени.
 install(FILES "../hiddify-core/bin/libcronet.dll" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
 COMPONENT Runtime RENAME libcronet.dll)
 
-install(FILES "../hiddify-core/bin/HiddifyCli.exe" DESTINATION "${CMAKE_INSTALL_PREFIX}"
-COMPONENT Runtime RENAME HiddifyCli.exe)
+# HiddifyCli.exe (CLI апстрима) не ставится: приложение его не вызывает.
 
 
 if(PLUGIN_BUNDLED_LIBRARIES)

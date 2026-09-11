@@ -26,19 +26,22 @@ class CoreInterfaceDesktop extends CoreInterface with InfraLogger {
   static final AxiomCoreNativeLibrary _box = _gen();
 
   static AxiomCoreNativeLibrary _gen() {
-    String fullPath = "";
+    // В сборке ядро лежит рядом с exe под своим именем (axiom-core.*, см.
+    // RENAME в windows/CMakeLists.txt). В тестах путь прежний: бинарь апстрима
+    // в каталоге hiddify-core под исходным именем.
+    String fullPath;
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
-      fullPath = "hiddify-core";
-    }
-    if (Platform.isWindows) {
-      fullPath = p.join(fullPath, "hiddify-core.dll");
+      final ext = Platform.isWindows ? "dll" : (Platform.isMacOS ? "dylib" : "so");
+      fullPath = p.join("hiddify-core", "hiddify-core.$ext");
+    } else if (Platform.isWindows) {
+      fullPath = "axiom-core.dll";
     } else if (Platform.isMacOS) {
-      fullPath = p.join(fullPath, "hiddify-core.dylib");
+      fullPath = "axiom-core.dylib";
     } else {
-      fullPath = p.join(fullPath, "hiddify-core.so");
+      fullPath = "axiom-core.so";
     }
 
-    _logger.debug('hiddify-core native libs path: "$fullPath"');
+    _logger.debug('core native lib path: "$fullPath"');
     final lib = DynamicLibrary.open(fullPath);
     // final stopFunc = lib.lookup<NativeFunction<StopFunc>>('stop').asFunction<StopFunc>();
     // final errPtr2 = stopFunc();
