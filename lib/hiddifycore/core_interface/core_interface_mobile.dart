@@ -28,8 +28,19 @@ class CoreInterfaceMobile extends CoreInterface with InfraLogger {
   late Uint8List serverPublicKey;
   static final cert = CryptoUtils.generateEcKeyPair();
 
-  static const portBack = 17079;
-  static const portFront = 17078;
+  // 🔴 Порты gRPC между UI и ядром обязаны отличаться от апстрима Hiddify
+  // (17078/17079). Защиты на канале нет: mTLS включается только в режимах 1/2,
+  // обмен ключами закомментирован, ядро получает `secret = ""`. А `setup()` при
+  // старте стучится на portFront и, если кто-то ответил, считает, что «core is
+  // already started», и подключается к нему. На Android localhost общий для всех
+  // приложений — поэтому Hiddify, открытый на том же телефоне, находил наше ядро,
+  // принимал за своё и показывал «VPN включён». И наоборот.
+  //
+  // Ядро порты не зашивает (в libhiddify-core.so только формат "127.0.0.1:%d"):
+  // portFront уходит в Kotlin через `setup`, portBack — через `start`
+  // (Settings.grpcServiceModePort, на нём слушает режим службы).
+  static const portBack = 23079;
+  static const portFront = 23078;
 
   bool _isBgClientAvailable = false;
   bool _debug = false;
