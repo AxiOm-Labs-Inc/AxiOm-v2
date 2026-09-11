@@ -4,10 +4,10 @@ project(runner LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "hiddify")
+set(BINARY_NAME "axiom")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "app.hiddify.com")
+set(APPLICATION_ID "app.axiom")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -108,15 +108,11 @@ install(CODE "
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
 
+# Бинарь ядра апстрима — под своим именем, как на Windows (см. windows/CMakeLists.txt).
 install(FILES "../hiddify-core/bin/lib/hiddify-core.so" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-  COMPONENT Runtime)
+  COMPONENT Runtime RENAME axiom-core.so)
 
-install(
-  FILES "../hiddify-core/bin/HiddifyCli" 
-  DESTINATION "${CMAKE_INSTALL_PREFIX}"
-  PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
-  COMPONENT Runtime
-)
+# HiddifyCli (CLI апстрима) не ставится: приложение его не вызывает.
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)

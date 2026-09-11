@@ -1,9 +1,9 @@
-display_name: Hiddify
+display_name: AxiOm
 
 icon: assets/images/source/ic_launcher_border.png
 
 keywords:
-  - Hiddify
+  - AxiOm
   - Proxy
   - VPN
   - V2ray
@@ -12,7 +12,7 @@ keywords:
   - Psiphon
   - OpenVPN
 
-generic_name: Hiddify
+generic_name: AxiOm
 
 actions:
   - name: Start
@@ -31,14 +31,9 @@ startup_notify: true
 
 # app_links setup for Linux
 # https://github.com/llfbandit/app_links/blob/master/doc/README_linux.md
+# Только своя схема — как на Windows (LinkParser.ownProtocols).
 supported_mime_type:
-  - x-scheme-handler/hiddify
-  - x-scheme-handler/v2ray
-  - x-scheme-handler/v2rayn
-  - x-scheme-handler/v2rayng
-  - x-scheme-handler/clash
-  - x-scheme-handler/clashmeta
-  - x-scheme-handler/sing-box
+  - x-scheme-handler/axiom
 
 # You can specify the shared libraries that you want to bundle with your app
 #
@@ -51,4 +46,4 @@ supported_mime_type:
 #   - libcurl.so.4
 include: []
 
-metainfo: linux/packaging/app.hiddify.com.appdata.xml
+metainfo: linux/packaging/app.axiom.appdata.xml

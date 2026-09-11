@@ -14,7 +14,7 @@ struct _MyApplication
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
-#define ICON_PATH "./hiddify.png"
+#define ICON_PATH "./axiom.png"
 
 // Implements GApplication::activate.
 static void my_application_activate(GApplication *application)

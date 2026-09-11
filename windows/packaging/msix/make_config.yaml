@@ -5,8 +5,10 @@ msix_version: 4.1.2.0
 logo_path: windows\runner\resources\app_icon.ico
 capabilities: internetClient, internetClientServer, privateNetworkClientServer
 languages: ar, en-us, es-es, fa-ir, fr-fr, id-id, pt-br, ru-ru, tr-tr, zh-cn, zh-tw
-protocol_activation: hiddify, v2ray, v2rayn, v2rayng, clash, clashmeta, sing-box
-execution_alias: hiddify
+# Только своя схема: на десктопе чужие (hiddify, clash, sing-box…) не
+# регистрируем — см. LinkParser.ownProtocols.
+protocol_activation: axiom
+execution_alias: axiom
 certificate_path: windows\sign.pfx
 certificate_password:
 publisher: CN=8CB43675-F44B-4AA5-9372-E8727781BDC4
@@ -16,6 +18,6 @@ startup_task:
   parameters: --autostart
 
 # For testing with a self-signed certificate
-# publisher: CN=Hiddify-Test
+# publisher: CN=AxiOm-Test
 # certificate_password: "1234"
 # install_certificate: "true"

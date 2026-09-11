@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AxiOm AppStream Metadata -->
+<component type="desktop-application">
+  <id>app.axiom</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>AxiOm</name>
+  <summary>VPN client</summary>
+
+  <developer_name>AxiOm</developer_name>
+
+  <description>
+    <p>
+      AxiOm is a VPN client with multi-protocol support.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">axiom.desktop</launchable>
+
+  <icon type="stock">axiom</icon>
+
+  <categories>
+    <category>Network</category>
+  </categories>
+
+  <keywords>
+    <keyword>AxiOm</keyword>
+    <keyword>Proxy</keyword>
+    <keyword>VPN</keyword>
+  </keywords>
+
+  <mime-types>
+    <mime-type>x-scheme-handler/axiom</mime-type>
+  </mime-types>
+
+  <url type="homepage">https://axiom.arcohouse.space</url>
+  <url type="bugtracker">https://github.com/AxiOm-Labs-Inc/AxiOm-v2/issues</url>
+
+  <provides>
+    <binary>axiom</binary>
+  </provides>
+
+  <custom>
+    <value key="PackageName">axiom</value>
+    <value key="Priority">optional</value>
+    <value key="Section">x11</value>
+    <value key="InstalledSize">6604</value>
+    <value key="Essential">false</value>
+  </custom>
+</component>

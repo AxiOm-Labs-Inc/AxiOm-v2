@@ -19,8 +19,8 @@ install_integration() {
         REAL_HOME="$HOME"
     fi
 
-    APP_NAME="hiddify"
-    TARGET_DESKTOP="$REAL_HOME/.local/share/applications/hiddify.desktop"
+    APP_NAME="axiom"
+    TARGET_DESKTOP="$REAL_HOME/.local/share/applications/axiom.desktop"
     LOCAL_HICOLOR="$REAL_HOME/.local/share/icons/hicolor"
     
     if [ ! -f "$LOCAL_HICOLOR/index.theme" ]; then
@@ -32,18 +32,18 @@ install_integration() {
         fi
     fi
 
-    if [[ -f "./hiddify.png" ]]; then
+    if [[ -f "./axiom.png" ]]; then
 
         mkdir -p "$LOCAL_HICOLOR/128x128/apps"
-        cp "./hiddify.png" "$LOCAL_HICOLOR/128x128/apps/hiddify.png"
+        cp "./axiom.png" "$LOCAL_HICOLOR/128x128/apps/axiom.png"
         
         mkdir -p "$LOCAL_HICOLOR/256x256/apps"
-        cp "./hiddify.png" "$LOCAL_HICOLOR/256x256/apps/hiddify.png"
+        cp "./axiom.png" "$LOCAL_HICOLOR/256x256/apps/axiom.png"
         
         gtk-update-icon-cache -f -t "$LOCAL_HICOLOR" 2>/dev/null || true
     fi
 
-    if [ -f "/usr/share/applications/hiddify.desktop" ]; then
+    if [ -f "/usr/share/applications/axiom.desktop" ]; then
         return
     fi
 
@@ -52,11 +52,11 @@ install_integration() {
     cat > "$TARGET_DESKTOP" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Hiddify
+Name=AxiOm
 Exec="$APPIMAGE"
-Icon=hiddify
+Icon=axiom
 Terminal=false
-StartupWMClass=app.hiddify.com
+StartupWMClass=app.axiom
 EOF
 
     chmod +x "$TARGET_DESKTOP"
@@ -67,12 +67,12 @@ EOF
 show_help() {
 cat << EOF
 Usage: ${0##*/} ...
-start Hiddify or HiddifyCli, when no parameter is given, Hiddify is executed.
+start AxiOm; when no parameter is given, AxiOm is executed.
     -v              show version
 EOF
 }
 show_version() {
-    printf "Hiddify version "
+    printf "AxiOm version "
     jq .version <./data/flutter_assets/version.json
 }
 # Initialize variables:
@@ -82,19 +82,15 @@ OPTIND=1
 # Resetting OPTIND is necessary if getopts was used previously in the script.
 # It is a good idea to make OPTIND local if you process options in a function.
 
-# if no arg is provided, execute hiddify app
+# if no arg is provided, execute the app
 if [[ $# == 0 ]];then 
     install_integration
-    exec ./hiddify
+    exec ./axiom
 else
 
 # processing arguments
 
     case $1 in
-        HiddifyCli)  
-            exec ./HiddifyCli ${@:3}
-            exit 0
-            ;;
         h)
             show_help
             exit 0

@@ -122,12 +122,6 @@ generate_kotlin_protos:
 		--include='*.proto' \
 		--exclude='*' \
 		hiddify-core/v2 hiddify-core/extension ./android/app/src/main/protos/
-	# # Find .proto files and update package declarations
-	# find "./android/app/src/main/java/com/hiddify/hiddify/protos" -type f -name "*.java" | while read -r proto_file; do \
-	#     if grep -q "^package " "$$proto_file"; then \
-	#         $(SED) 's/^package \([\w\.]*\)/package com.hiddify.hiddify.protos.\1/g' "$$proto_file"; \
-	#     fi \
-	# done
 
 generate_go_protoc:
 	make -C hiddify-core -f Makefile protos
@@ -301,11 +295,11 @@ windows-zip-release:
 	$(YELLOW)Post-processing Windows portable$(DONE); \
 	cd "$$ZIP_DIR"; \
 	$(BLUE)Extracting and Repacking...$(DONE); \
-	mkdir -p Hiddify; \
-	unzip -q "$$ZIP_FILE" -d Hiddify/; \
+	mkdir -p AxiOm; \
+	unzip -q "$$ZIP_FILE" -d AxiOm/; \
 	rm "$$ZIP_FILE"; \
-	tar -a -cf "$$FILE_NAME.zip" Hiddify; \
-	rm -rf Hiddify; \
+	tar -a -cf "$$FILE_NAME.zip" AxiOm; \
+	rm -rf AxiOm; \
 	$(GREEN)Successful$(DONE)
 
 windows-exe-release:
@@ -384,33 +378,33 @@ linux-appimage-release:
 	cp ../../linux/packaging/appimage/AppRun squashfs-root/AppRun; \
 	$(BLUE)Granting permissions$(DONE); \
 	chmod +x squashfs-root/AppRun; \
-	$(BLUE)Adding StartupWMClass to hiddify.desktop$(DONE); \
-	sed -i '/^\[Desktop Entry\]/a StartupWMClass=app.hiddify.com' "squashfs-root/hiddify.desktop"; \
+	$(BLUE)Adding StartupWMClass to axiom.desktop$(DONE); \
+	sed -i '/^\[Desktop Entry\]/a StartupWMClass=app.axiom' "squashfs-root/axiom.desktop"; \
 	$(BLUE)Removing old AppImage$(DONE); \
 	rm *.AppImage; \
 	$(BLUE)Deleting bundled libstdc++ to fix Arch Linux compatibility...$(DONE); \
 	find squashfs-root/usr/lib -name "libstdc++.so.6" -delete; \
 	$(BLUE)Rebuilding AppImage$(DONE); \
-	ARCH=x86_64 appimagetool --no-appstream squashfs-root Hiddify.AppImage > /dev/null; \
+	ARCH=x86_64 appimagetool --no-appstream squashfs-root AxiOm.AppImage > /dev/null; \
 	$(BLUE)Cleaning up squashfs$(DONE); \
 	rm -rf squashfs-root; \
 	$(YELLOW)Creating Portable Package$(DONE); \
-	PKG_DIR_NAME="hiddify-linux-appimage"; \
+	PKG_DIR_NAME="axiom-linux-appimage"; \
 	$(BLUE)Creating dir: $$PKG_DIR_NAME$(DONE); \
 	mkdir -p "$$PKG_DIR_NAME"; \
-	$(BLUE)Moving Hiddify.AppImage$(DONE); \
-	cp -p "Hiddify.AppImage" "$$PKG_DIR_NAME/Hiddify.AppImage"; \
+	$(BLUE)Moving AxiOm.AppImage$(DONE); \
+	cp -p "AxiOm.AppImage" "$$PKG_DIR_NAME/AxiOm.AppImage"; \
 	$(BLUE)Creating Portable Home directory$(DONE); \
-	mkdir -p "$$PKG_DIR_NAME/Hiddify.AppImage.home"; \
+	mkdir -p "$$PKG_DIR_NAME/AxiOm.AppImage.home"; \
 	$(BLUE)Compressing to .tar.gz$(DONE); \
 	tar -czf "$$PKG_DIR_NAME.tar.gz" -C . "$$PKG_DIR_NAME"; \
 	$(BLUE)Removing intermediate directory$(DONE); \
 	rm -rf "$$PKG_DIR_NAME"; \
 	$(GREEN)Successful$(DONE)
 
-DOCKER_IMAGE_NAME := hiddify-linux-builder
-DOCKER_FLUTTER_VOL := hiddify-flutter-sdk-cache
-DOCKER_PUB_VOL := hiddify-pub-cache
+DOCKER_IMAGE_NAME := axiom-linux-builder
+DOCKER_FLUTTER_VOL := axiom-flutter-sdk-cache
+DOCKER_PUB_VOL := axiom-pub-cache
 
 ifeq ($(OS),Windows_NT)
     FIX_OWNERSHIP := echo \"Windows detected: Skipping chown\"
