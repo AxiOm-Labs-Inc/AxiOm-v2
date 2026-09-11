@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:axiom/core/preferences/general_preferences.dart';
 import 'package:axiom/core/preferences/preferences_provider.dart';
 import 'package:axiom/features/connection/data/connection_data_providers.dart';
+import 'package:axiom/features/connection/model/connection_status.dart';
 import 'package:axiom/features/connection/model/core_owner.dart';
 import 'package:axiom/features/profile/data/profile_data_providers.dart';
 import 'package:axiom/features/settings/data/battery_optimization_repository.dart';
@@ -111,9 +112,14 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   /// silence after that justifies the heavy relay restart.
   bool _coreRestartTried = false;
 
-  /// Consecutive failed attempts to bring the core up while the tunnel tab
-  /// shows Connected (the «says it works, nothing loads» state).
-  int _coreStartFailures = 0;
+  /// Статус ядра — чтобы заметить его остановку снаружи (кнопка в
+  /// уведомлении) и выключить Телемост целиком, см. [_onCoreStatus].
+  StreamSubscription<ConnectionStatus>? _coreStatusSub;
+  bool _coreSeenConnected = false;
+
+  /// Ядро останавливаем мы сами (stopCore/_forceStopCore) — это не внешняя
+  /// остановка.
+  bool _stoppingCore = false;
 
   /// Room the relay is currently bound to. The WG identity is derived from it,
   /// so the core config must be rebuilt whenever the room changes.
@@ -158,6 +164,7 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
 
   Future<bool> _runActivate() async {
     _statusSub ??= _service.watchStatus().listen(_onStatus);
+    _coreStatusSub ??= _ref.read(connectionRepositoryProvider).watchConnectionStatus().listen(_onCoreStatus);
     unawaited(_maybeRequestBatteryExemption());
 
     state = const WbstreamStarting();
@@ -265,11 +272,12 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     if (state is! WbstreamConnected) return;
     final socks = _socks;
     if (socks == null) return;
-    // Connected without a wbstream-owned core is the «says it works,
-    // nothing loads» state (TUN/WG path down while the relay is fine):
-    // bring the core up before probing anything.
+    // Туннель без своего ядра — Телемост фактически выключен (ядро не
+    // стартовало или его остановили). Автоподъём ядра убран: он не давал
+    // выключить Телемост кнопкой в уведомлении.
     if (_ref.read(coreOwnerProvider) != CoreOwner.wbstream) {
-      unawaited(_recoverCore());
+      loggy.info('wbstream: core is not running — turning Telemost off');
+      unawaited(deactivate());
       return;
     }
     // Probe the path user traffic actually takes: through the core's mixed
@@ -284,7 +292,6 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     if (ok) {
       _watchdogFailures = 0;
       _coreRestartTried = false;
-      _coreStartFailures = 0;
       return;
     }
     _watchdogFailures++;
@@ -296,38 +303,6 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
       unawaited(_restartCore());
     } else {
       unawaited(_restartRelay());
-    }
-  }
-
-  /// Brings the core up while the tunnel claims Connected. Two failures in
-  /// a row escalate to a relay restart — a plausible reason the core refuses
-  /// to start is that the relay's local SOCKS endpoint died.
-  Future<void> _recoverCore() async {
-    if (_restartingTunnel) return;
-    final last = _lastWatchdogRestart;
-    if (last != null && DateTime.now().difference(last) < const Duration(seconds: 30)) {
-      return;
-    }
-    _restartingTunnel = true;
-    _lastWatchdogRestart = DateTime.now();
-    var escalate = false;
-    try {
-      loggy.warning('wbstream: core not running while connected — starting it');
-      if (await startCore()) {
-        _coreStartFailures = 0;
-      } else {
-        _coreStartFailures++;
-        escalate = _coreStartFailures >= 2;
-      }
-    } finally {
-      _restartingTunnel = false;
-    }
-    if (escalate) {
-      _coreStartFailures = 0;
-      // Bypass the relay-restart cooldown: this escalation is the reason the
-      // core would not start, blocking it would loop forever.
-      _lastWatchdogRestart = null;
-      await _restartRelay();
     }
   }
 
@@ -475,9 +450,14 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   /// Unconditional core stop (stopCore no-ops when the owner tag was already
   /// reset by a failed start, leaving a wedged session behind).
   Future<void> _forceStopCore() async {
-    await _ref.read(connectionRepositoryProvider).disconnect().mapLeft((failure) {
-      loggy.warning('wbstream: core stop failed: $failure');
-    }).run();
+    _stoppingCore = true;
+    try {
+      await _ref.read(connectionRepositoryProvider).disconnect().mapLeft((failure) {
+        loggy.warning('wbstream: core stop failed: $failure');
+      }).run();
+    } finally {
+      _stoppingCore = false;
+    }
     _ref.read(coreOwnerProvider.notifier).state = CoreOwner.none;
   }
 
@@ -507,6 +487,7 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     }
     final file = await _writeCoreConfig(cfg);
     if (file == null) return false;
+    _coreSeenConnected = false;
     _ref.read(coreOwnerProvider.notifier).state = CoreOwner.wbstream;
     final result = await _ref
         .read(connectionRepositoryProvider)
@@ -526,15 +507,22 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   /// touched.
   Future<void> stopCore() async {
     if (_ref.read(coreOwnerProvider) != CoreOwner.wbstream) return;
-    await _ref.read(connectionRepositoryProvider).disconnect().mapLeft((failure) {
-      loggy.warning('wbstream: core stop failed: $failure');
-    }).run();
+    _stoppingCore = true;
+    try {
+      await _ref.read(connectionRepositoryProvider).disconnect().mapLeft((failure) {
+        loggy.warning('wbstream: core stop failed: $failure');
+      }).run();
+    } finally {
+      _stoppingCore = false;
+    }
     _ref.read(coreOwnerProvider.notifier).state = CoreOwner.none;
   }
 
   Future<void> deactivate() async {
     _stopWatchdog();
     await stopCore();
+    await _coreStatusSub?.cancel();
+    _coreStatusSub = null;
     await _statusSub?.cancel();
     _statusSub = null;
     _socks = null;
@@ -574,6 +562,25 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   void _completeAttempt(bool value) {
     final completer = _attemptCompleter;
     if (completer != null && !completer.isCompleted) completer.complete(value);
+  }
+
+  /// Ядро Телемоста остановили снаружи — кнопкой в уведомлении или системой.
+  /// Раньше watchdog поднимал его обратно, и выключить Телемост из
+  /// уведомления было нельзя. Теперь такая остановка выключает Телемост
+  /// целиком (relay тоже). Свои остановки (stopCore, перезапуск watchdog)
+  /// отсекаются флагами.
+  void _onCoreStatus(ConnectionStatus status) {
+    if (_ref.read(coreOwnerProvider) != CoreOwner.wbstream) return;
+    if (status is Connected) {
+      _coreSeenConnected = true;
+      return;
+    }
+    if (status is! Disconnected || !_coreSeenConnected) return;
+    if (_stoppingCore || _restartingTunnel) return;
+    loggy.info('wbstream: core stopped outside the app — turning Telemost off');
+    _coreSeenConnected = false;
+    _ref.read(coreOwnerProvider.notifier).state = CoreOwner.none;
+    unawaited(deactivate());
   }
 
   void _onStatus(WbstreamStatusEvent event) {
@@ -637,6 +644,7 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   @override
   void dispose() {
     _watchdogTimer?.cancel();
+    unawaited(_coreStatusSub?.cancel());
     unawaited(_statusSub?.cancel());
     unawaited(_service.stop());
     super.dispose();
