@@ -334,19 +334,23 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       startPolling(p.pid);
     }
 
+    // Каталог тарифов. Отдельной функцией, а не только в useEffect: тот же
+    // запрос нужен, когда сервер сообщил, что цена изменилась.
+    Future<void> loadTariffs() async {
+      final res = await ref.read(accountApiProvider).getTariffs();
+      final list = (res['tariffs'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      if (context.mounted) tariffs.value = list;
+    }
+
     // ── загрузка каталога и подхват незавершённой оплаты ─────────────────
     useEffect(
       () {
         var disposed = false;
         Future<void>(() async {
           try {
-            final api = ref.read(accountApiProvider);
-            final res = await api.getTariffs();
-            if (disposed) return;
-            final list = (res['tariffs'] as List? ?? [])
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-            tariffs.value = list;
+            await loadTariffs();
           } catch (e) {
             if (!disposed) loadError.value = _describeError(e);
           }
@@ -376,8 +380,9 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     );
 
     // ── покупка ──────────────────────────────────────────────────────────
-    Future<void> buy(int idx) async {
+    Future<void> buy(_Plan plan) async {
       if (paying.value || hasPending) return;
+      final idx = plan.idx;
       paying.value = true;
       busyIdx.value = idx;
       payError.value = null;
@@ -387,6 +392,8 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         final promo = promoController.text.trim();
         final created = await api.createPayment(
           tariffIdx: idx,
+          // Цена, которую человек видит на кнопке прямо сейчас.
+          expectedPrice: plan.price,
           promo: promo.isEmpty ? null : promo,
           sessionToken: sessionToken,
         );
@@ -419,6 +426,16 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         paying.value = false;
         busyIdx.value = null;
         payError.value = _describeError(e);
+        // Цену успели поменять, пока лист был открыт: платёж не создан, сервер
+        // вернул текущую. Перечитываем каталог — новая цена должна оказаться
+        // на кнопке, а не только в сообщении об ошибке.
+        if (e is DioException && e.response?.statusCode == 409) {
+          try {
+            await loadTariffs();
+          } catch (err) {
+            loggy.warning('tariff reload after price change failed: $err');
+          }
+        }
       }
     }
 
@@ -548,7 +565,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                     telemostElsewhere: catalog.anyTelemost,
                     busy: busyIdx.value == shown[i].idx,
                     enabled: interactive,
-                    onTap: () => buy(shown[i].idx),
+                    onTap: () => buy(shown[i]),
                   ),
                   if (i != shown.length - 1) const SizedBox(height: 12),
                 ],
