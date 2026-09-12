@@ -121,6 +121,11 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   /// остановка.
   bool _stoppingCore = false;
 
+  /// Номер сессии: deactivate его увеличивает. Попытка подключения, начатая
+  /// до выключения, по нему понимает, что устарела, и выходит тихо — не
+  /// ставит ошибку и не останавливает relay новой сессии.
+  int _session = 0;
+
   /// Room the relay is currently bound to. The WG identity is derived from it,
   /// so the core config must be rebuilt whenever the room changes.
 
@@ -163,6 +168,7 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   }
 
   Future<bool> _runActivate() async {
+    final session = _session;
     _statusSub ??= _service.watchStatus().listen(_onStatus);
     _coreStatusSub ??= _ref.read(connectionRepositoryProvider).watchConnectionStatus().listen(_onCoreStatus);
     unawaited(_maybeRequestBatteryExemption());
@@ -172,9 +178,11 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     // Секрет берётся один раз за активацию: держателю он не отдаётся, из него
     // считается одноразовое доказательство. Дальше комнату находит relay сам.
     _tmSecret = await _ref.read(telemostCredentialsServiceProvider).secret();
+    if (session != _session) return false;
 
     _lastDenyReason = null;
     if (await _attemptConnect()) return true;
+    if (session != _session) return false;
     await _service.stop();
 
     // Держатель не опознал секрет (на сервере подняли поколение) — обновляем
@@ -184,8 +192,10 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
       _tmSecret = await _ref
           .read(telemostCredentialsServiceProvider)
           .secret(forceRefresh: true);
+      if (session != _session) return false;
       _lastDenyReason = null;
       if (await _attemptConnect()) return true;
+      if (session != _session) return false;
       await _service.stop();
     }
     // Отказ по существу — показать причину; иначе общая ошибка.
@@ -221,12 +231,14 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   /// туннель — отдельной Dart-пробы здесь больше нет. Вместе с 'connected'
   /// приходит событие `config` с фрагментом для ядра; ждём и его.
   Future<bool> _attemptConnect() async {
+    final session = _session;
     _tunnelVerified = false;
     _coreConfig = null;
     _attemptCompleter = Completer<bool>();
     try {
       _socks = await _service.start(_settings, tmSecret: _tmSecret);
     } catch (e) {
+      if (session != _session) return false;
       loggy.warning('tunnel: start failed: $e');
       state = WbstreamError('Не удалось запустить relay: $e');
       return false;
@@ -238,6 +250,8 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
         return false;
       },
     );
+    // Телемост выключили, пока ждали туннель, — попытка устарела.
+    if (session != _session) return false;
     if (!joined) return false;
     if (_coreConfig == null) {
       loggy.warning('tunnel: connected but no config received');
@@ -346,7 +360,9 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
       await _service.stop();
       // Relay сам заново обойдёт комнаты: молчание могло значить, что наша
       // комната закрыта, и тогда поможет только другая.
+      final session = _session;
       final ok = await _attemptConnect();
+      if (session != _session) return;
       if (!ok) {
         loggy.warning('wbstream: watchdog restart failed');
         await _service.stop();
@@ -519,6 +535,13 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   }
 
   Future<void> deactivate() async {
+    // Отменяем начатую попытку подключения: без этого она ждала туннель до
+    // 90 с, потом ставила ошибку и останавливала relay уже новой сессии, а
+    // повторное «подключить» всё это время ждало её же.
+    _session++;
+    _completeAttempt(false);
+    final pending = _connectCompleter;
+    if (pending != null && !pending.isCompleted) pending.complete(false);
     _stopWatchdog();
     await stopCore();
     await _coreStatusSub?.cancel();

@@ -96,6 +96,8 @@ class WbstreamPage extends HookConsumerWidget with PresLogger {
         await ref.read(connectionNotifierProvider.notifier).abortConnection();
         if (!await notifier.ensureConnected()) {
           final err = ref.read(wbstreamTunnelNotifierProvider);
+          // Выключили, пока подключались (кнопка VPN, уведомление) — не ошибка.
+          if (err is WbstreamIdle) return;
           toastError(err is WbstreamError ? err.message : 'Туннель не поднялся');
           notifier.resetError();
           return;
