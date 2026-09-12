@@ -58,6 +58,11 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
   const App({super.key});
 
   void onInactive(WidgetRef ref) {
+    // На Android inactive — шторка, диалог разрешения VPN, звонок: приложение
+    // на экране. Закрывать тут связь с ядром нельзя — открытая во время
+    // подключения шторка давала «configure tun interface: permission denied»,
+    // а возврат из неё — «gRPC Error (code: 14)».
+    if (PlatformUtils.isAndroid) return;
     onPause(ref);
   }
 
@@ -68,8 +73,10 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
   }
 
   void onResume(WidgetRef ref) {
-    // if (PlatformUtils.isDesktop) return;
-    ref.read(hiddifyCoreServiceProvider).init();
+    // Ядро настраивает bootstrap; повторный setup нужен только после
+    // closeFront в onPause. Без этой проверки первый resumed при запуске
+    // запускал второй setup параллельно первому.
+    if (PlatformUtils.isDesktop || isOnPauseCalled) ref.read(hiddifyCoreServiceProvider).init();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (isOnPauseCalled && PlatformUtils.isAndroid) ref.invalidate(perAppProxyServiceProvider);
