@@ -110,8 +110,13 @@ class AccountApi with InfraLogger {
   /// [sessionToken] is optional: the expiry banner is also shown to users who
   /// never connected a Telegram account. With a token the purchase is bound to
   /// the account, without one the response carries a claim_url to bind later.
+  /// [expectedPrice] — цена, которую покупатель видит на кнопке. Каталог
+  /// читается один раз, при открытии листа, и к моменту оплаты мог устареть;
+  /// сервер сверяет её с текущей и отвечает 409 `price_changed`, не создавая
+  /// платёж. Без этого поля (старые сборки) проверки нет.
   Future<Map<String, dynamic>> createPayment({
     required int tariffIdx,
+    int? expectedPrice,
     String? method,
     String? promo,
     String? sessionToken,
@@ -120,6 +125,7 @@ class AccountApi with InfraLogger {
       '$baseUrl/api/app/payment',
       data: jsonEncode({
         'tariff_idx': tariffIdx,
+        if (expectedPrice != null) 'expected_price': expectedPrice,
         if (method != null) 'method': method,
         if (promo != null && promo.isNotEmpty) 'promo': promo,
       }),
