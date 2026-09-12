@@ -73,9 +73,17 @@ class AxiomCoreService with InfraLogger {
         final response = await core.fgClient.parse(ParseRequest(tempPath: tempPath, configPath: path, debug: false));
         if (response.responseCode != ResponseCode.OK) return left("${response.responseCode} ${response.message}");
       } catch (e) {
-        await setup().run();
-        final response = await core.fgClient.parse(ParseRequest(tempPath: tempPath, configPath: path, debug: false));
-        if (response.responseCode != ResponseCode.OK) return left("${response.responseCode} ${response.message}");
+        // Повтор после переподключения к ядру тоже может бросить (ядро как раз
+        // перезапускается, конфиг не разобрался). Без своего catch исключение
+        // улетало мимо TaskEither в PlatformDispatcher — в логе
+        // «PlatformDispatcherError: ... unable to determine config format», а
+        // вызывающий код не узнавал о неудаче.
+        try {
+          final response = await core.fgClient.parse(ParseRequest(tempPath: tempPath, configPath: path, debug: false));
+          if (response.responseCode != ResponseCode.OK) return left("${response.responseCode} ${response.message}");
+        } catch (e) {
+          return left(e.toString());
+        }
       }
       return right(unit);
     });
@@ -485,6 +493,14 @@ class AxiomCoreService with InfraLogger {
       // .endWith(const CoreStatus.stopped())
       onError: (error) {
         loggy.error("Stream error in ${key}StatusListener: $error");
+        // VPN отозвали снаружи (другое VPN-приложение, система): ядро успевает
+        // прислать STOPPING, и поток рвётся — STOPPED не приходит. Без этого
+        // статус навсегда оставался «отключается», а watchdog Телемоста
+        // перезапускал ядро и отбирал VPN обратно у другого приложения.
+        if (currentState is CoreStopping) {
+          currentState = const CoreStatus.stopped();
+          statusController.add(currentState);
+        }
 
         // currentState = const CoreStatus.stopped();
         // statusController.add(currentState);
