@@ -65,19 +65,28 @@ class TelemostCredentialsService with InfraLogger {
   /// Нужен, когда RU с телефона недоступен вовсе — белые списки, а Telegram
   /// для входа в аккаунт не открывается ни на какой сети.
   ///
-  /// Формат: `AXT1-` + base64url(tg_id[8] | gen[4] | tm_secret[32] | check[4]),
-  /// check — первые 4 байта SHA-256 от `AXT1` и первых 44 байт. Проверка только
-  /// от опечаток: право на мост решает держатель по самому секрету, а вкладка,
-  /// открытая выдуманным кодом, ни к чему не подключится.
+  /// Формат: `AXT1-` + (tg_id[8] | gen[4] | tm_secret[32] | check[4]) в hex
+  /// (96 знаков) или в base64url (64 знака), check — первые 4 байта SHA-256 от
+  /// `AXT1` и первых 44 байт. Hex выдаётся по умолчанию: в base64url бывают `_`,
+  /// а мессенджеры принимают текст между ними за курсив и выкидывают символы.
+  /// Проверка только от опечаток: право на мост решает держатель по самому
+  /// секрету, а вкладка, открытая выдуманным кодом, ни к чему не подключится.
   ///
   /// Код ищется внутри вставленного текста, так что можно вставить сообщение
   /// целиком. true — код принят, секрет сохранён, вкладка открыта.
   Future<bool> importActivationCode(String input) async {
-    final match = RegExp(r'AXT1-([A-Za-z0-9_-]{64})').firstMatch(input);
-    if (match == null) return false;
     final Uint8List bytes;
+    final hex = RegExp('AXT1-([0-9a-fA-F]{96})').firstMatch(input);
+    final b64 = RegExp('AXT1-([A-Za-z0-9_-]{64})').firstMatch(input);
     try {
-      bytes = base64Url.decode(match.group(1)!);
+      if (hex != null) {
+        final s = hex.group(1)!;
+        bytes = Uint8List.fromList([for (var i = 0; i < 96; i += 2) int.parse(s.substring(i, i + 2), radix: 16)]);
+      } else if (b64 != null) {
+        bytes = base64Url.decode(b64.group(1)!);
+      } else {
+        return false;
+      }
     } catch (_) {
       return false;
     }
