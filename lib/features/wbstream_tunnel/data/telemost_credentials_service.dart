@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:axiom/core/preferences/general_preferences.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:axiom/features/account/data/account_api.dart';
 import 'package:axiom/features/account/model/account_state.dart';
@@ -56,6 +59,44 @@ class TelemostCredentialsService with InfraLogger {
   }
 
   Future<void> clear() => _storage.delete(key: _storageKey);
+
+  /// Код активации — тот же секрет, выданный вручную (скриптом на RU) и
+  /// присланный человеку через то, что у него открывается: MAX, ВК, SMS.
+  /// Нужен, когда RU с телефона недоступен вовсе — белые списки, а Telegram
+  /// для входа в аккаунт не открывается ни на какой сети.
+  ///
+  /// Формат: `AXT1-` + base64url(tg_id[8] | gen[4] | tm_secret[32] | check[4]),
+  /// check — первые 4 байта SHA-256 от `AXT1` и первых 44 байт. Проверка только
+  /// от опечаток: право на мост решает держатель по самому секрету, а вкладка,
+  /// открытая выдуманным кодом, ни к чему не подключится.
+  ///
+  /// Код ищется внутри вставленного текста, так что можно вставить сообщение
+  /// целиком. true — код принят, секрет сохранён, вкладка открыта.
+  Future<bool> importActivationCode(String input) async {
+    final match = RegExp(r'AXT1-([A-Za-z0-9_-]{64})').firstMatch(input);
+    if (match == null) return false;
+    final Uint8List bytes;
+    try {
+      bytes = base64Url.decode(match.group(1)!);
+    } catch (_) {
+      return false;
+    }
+    if (bytes.length != 48) return false;
+    final check = sha256.convert([...utf8.encode('AXT1'), ...bytes.sublist(0, 44)]).bytes;
+    for (var i = 0; i < 4; i++) {
+      if (check[i] != bytes[44 + i]) return false;
+    }
+    final view = ByteData.sublistView(bytes);
+    final payload = <String, dynamic>{
+      'tm_secret': bytes.sublist(12, 44).map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+      'gen': view.getUint32(8),
+      'telegram_id': view.getUint64(0),
+    };
+    await _storage.write(key: _storageKey, value: jsonEncode(payload));
+    await _ref.read(Preferences.telemostEntitled.notifier).update(true);
+    loggy.info('telemost: секрет принят из кода активации (поколение ${payload['gen']})');
+    return true;
+  }
 
   int? _currentTelegramId() {
     final state = _ref.read(accountNotifierProvider);
