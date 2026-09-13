@@ -136,9 +136,14 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
   /// Transient network failures (e.g. a brief DNS hiccup while the tunnel is
   /// coming up) are retried a few times before surfacing an error, so the user
   /// isn't shown a scary message for a momentary blip.
+  ///
+  /// Ожидание подтверждения запускается здесь же и живёт до входа или истечения
+  /// токена, а не пока открыт лист: человек уходит в Telegram, закрывает лист
+  /// свайпом или «Назад» — и подтверждение в боте всё равно доводит вход.
   Future<void> startLogin() async {
     const maxAttempts = 3;
     const retryDelay = Duration(seconds: 2);
+    _stopLoginPoll();
 
     for (var attempt = 1;; attempt++) {
       try {
@@ -152,6 +157,9 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
           deepLink: deepLink,
           expiresAt: DateTime.now().add(Duration(seconds: expiresIn)),
         );
+        final poll = CancelToken();
+        _loginPoll = poll;
+        unawaited(_pollAndConnect(poll));
         return;
       } catch (e) {
         if (_isNetworkError(e) && attempt < maxAttempts) {
@@ -166,9 +174,18 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
     }
   }
 
+  /// Ожидание текущей попытки входа; null — ожидания нет.
+  CancelToken? _loginPoll;
+
+  void _stopLoginPoll() {
+    _loginPoll?.cancel();
+    _loginPoll = null;
+  }
+
   /// Polls until the user confirms in Telegram, then fetches profile.
-  /// [cancelToken] cancels the polling (e.g. when user taps Cancel).
-  Future<void> pollAndConnect(CancelToken cancelToken) async {
+  /// [cancelToken] stops the polling (explicit Cancel or a newer attempt); the
+  /// state is then left to whoever cancelled.
+  Future<void> _pollAndConnect(CancelToken cancelToken) async {
     final connecting = state;
     if (connecting is! AccountStateConnecting) return;
 
@@ -177,10 +194,7 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
 
     try {
       while (true) {
-        if (cancelToken.isCancelled) {
-          state = const AccountState.disconnected();
-          return;
-        }
+        if (cancelToken.isCancelled) return;
 
         // Check timeout
         if (DateTime.now().isAfter(connecting.expiresAt)) {
@@ -189,6 +203,7 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
         }
 
         final response = await api.pollLogin(connecting.token);
+        if (cancelToken.isCancelled) return;
         if (response == null) {
           // Network error — retry after interval
           await Future.delayed(pollInterval);
@@ -230,17 +245,17 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
         await Future.delayed(pollInterval);
       }
     } catch (e) {
-      if (cancelToken.isCancelled) {
-        state = const AccountState.disconnected();
-        return;
-      }
+      if (cancelToken.isCancelled) return;
       loggy.warning('pollAndConnect failed: $e');
       state = AccountState.error(message: _friendlyError(e));
+    } finally {
+      if (identical(_loginPoll, cancelToken)) _loginPoll = null;
     }
   }
 
   /// Cancels an ongoing login attempt.
   void cancelLogin() {
+    _stopLoginPoll();
     if (state is AccountStateConnecting || state is AccountStateError) {
       state = const AccountState.disconnected();
     }

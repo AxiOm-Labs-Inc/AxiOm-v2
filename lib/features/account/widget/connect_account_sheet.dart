@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -27,31 +25,22 @@ class ConnectAccountSheet extends HookConsumerWidget with PresLogger {
     // Initialized from the actual expiry once the connecting state arrives;
     // 0 means "no deadline known yet" (indicator shows no bogus time).
     final countdown = useState(0);
-    final cancelToken = useRef(CancelToken());
-    final started = useRef(false);
 
-    // Start login on first build; cancel polling when the sheet is disposed
-    // (e.g. dismissed with a swipe, not just the Cancel button).
+    // Ожидание подтверждения живёт в AccountNotifier и закрытие листа его не
+    // прерывает. Поэтому новую попытку начинаем, только если прежняя не жива:
+    // иначе повторно открытый лист выбросил бы токен, который человек, может
+    // быть, уже подтвердил в боте.
     useEffect(() {
-      if (!started.value) {
-        started.value = true;
+      final current = ref.read(accountNotifierProvider);
+      final alive = current is AccountStateConnecting && current.expiresAt.isAfter(DateTime.now());
+      if (!alive) {
         Future.microtask(() => ref.read(accountNotifierProvider.notifier).startLogin());
       }
-      return () {
-        if (!cancelToken.value.isCancelled) cancelToken.value.cancel();
-      };
+      return null;
     }, []);
 
     // Listen for state transitions
     ref.listen(accountNotifierProvider, (prev, next) {
-      if (next is AccountStateConnecting) {
-        final remaining = next.expiresAt.difference(DateTime.now()).inSeconds;
-        countdown.value = remaining > 0 ? remaining : 0;
-
-        final ct = CancelToken();
-        cancelToken.value = ct;
-        ref.read(accountNotifierProvider.notifier).pollAndConnect(ct);
-      }
       if (next is AccountStateConnected) {
         Future.microtask(() {
           if (context.mounted) Navigator.of(context).pop();
@@ -63,10 +52,13 @@ class ConnectAccountSheet extends HookConsumerWidget with PresLogger {
     useEffect(() {
       final state = accountState;
       if (state is! AccountStateConnecting) return null;
-      final timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      void tick() {
         final remaining = state.expiresAt.difference(DateTime.now()).inSeconds;
         countdown.value = remaining > 0 ? remaining : 0;
-      });
+      }
+
+      Future.microtask(tick);
+      final timer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
       return timer.cancel;
     }, [accountState]);
 
@@ -142,7 +134,6 @@ class ConnectAccountSheet extends HookConsumerWidget with PresLogger {
             if (isConnecting)
               TextButton(
                 onPressed: () {
-                  cancelToken.value.cancel();
                   ref.read(accountNotifierProvider.notifier).cancelLogin();
                   Navigator.of(context).pop();
                 },
