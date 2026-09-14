@@ -46,6 +46,25 @@ class TunnelRelayController(
     var isRunning = false
         private set
 
+    // Что нужно приложению, чтобы подхватить уже работающий relay, когда экран
+    // пересоздали (смахнули из недавних): relay живёт дольше Flutter-движка.
+    @Volatile
+    var socks: SocksParams? = null
+        private set
+
+    @Volatile
+    var lastStatus: String = "stopped"
+        private set
+
+    @Volatile
+    var lastConfig: String? = null
+        private set
+
+    private fun emit(status: String, message: String?) {
+        if (status == "config") lastConfig = message else lastStatus = status
+        onStatus(status, message)
+    }
+
     /** Starts the relay and queues the JOIN command. Returns the local SOCKS5 endpoint. */
     fun start(joinJson: String): SocksParams {
         stop()
@@ -57,12 +76,15 @@ class TunnelRelayController(
         )
         val signalingPort = freePort()
         isRunning = true
+        socks = params
+        lastConfig = null
+        lastStatus = "starting"
         acquireLocks()
 
         val relayBin = File(nativeLibDir, "librelay.so")
         if (!relayBin.exists()) {
             isRunning = false
-            onStatus("error", "librelay.so not bundled")
+            emit("error", "librelay.so not bundled")
             return params
         }
 
@@ -91,7 +113,7 @@ class TunnelRelayController(
                 proc.inputStream.bufferedReader().forEachLine { line ->
                     when {
                         line.startsWith("RESOLVE:") -> resolveAndReply(line.removePrefix("RESOLVE:"))
-                        line.startsWith("STATUS:CONFIG:") -> onStatus("config", line.removePrefix("STATUS:CONFIG:"))
+                        line.startsWith("STATUS:CONFIG:") -> emit("config", line.removePrefix("STATUS:CONFIG:"))
                         line.startsWith("STATUS:") -> handleStatus(line.removePrefix("STATUS:"))
                         else -> {
                             Log.d(TAG, line)
@@ -103,13 +125,13 @@ class TunnelRelayController(
                 Log.d(TAG, "tunnel relay exited: ${proc.exitValue()}")
                 if (isRunning) {
                     isRunning = false
-                    onStatus("error", "процесс relay завершился (код ${proc.exitValue()})")
+                    emit("error", "процесс relay завершился (код ${proc.exitValue()})")
                 }
             } catch (e: Exception) {
                 if (isRunning) {
                     Log.e(TAG, "tunnel relay error", e)
                     isRunning = false
-                    onStatus("error", e.message ?: "relay error")
+                    emit("error", e.message ?: "relay error")
                 }
             }
         }.also { it.start() }
@@ -130,11 +152,11 @@ class TunnelRelayController(
     private fun handleStatus(status: String) {
         Log.d(TAG, "status: $status")
         when {
-            status == "READY" -> onStatus("starting", null)
-            status == "CONNECTING" || status == "RECONNECTING" -> onStatus("connecting", null)
-            status == "TUNNEL_CONNECTED" -> onStatus("connected", null)
-            status == "TUNNEL_LOST" -> onStatus("lost", null)
-            status.startsWith("ERROR:") -> onStatus("error", status.removePrefix("ERROR:"))
+            status == "READY" -> emit("starting", null)
+            status == "CONNECTING" || status == "RECONNECTING" -> emit("connecting", null)
+            status == "TUNNEL_CONNECTED" -> emit("connected", null)
+            status == "TUNNEL_LOST" -> emit("lost", null)
+            status.startsWith("ERROR:") -> emit("error", status.removePrefix("ERROR:"))
         }
     }
 
@@ -167,7 +189,9 @@ class TunnelRelayController(
             try { activeThread.join(500) } catch (_: Exception) {}
         }
         thread = null
-        if (wasRunning) onStatus("stopped", null)
+        socks = null
+        lastConfig = null
+        if (wasRunning) emit("stopped", null) else lastStatus = "stopped"
     }
 
     @Suppress("DEPRECATION")
