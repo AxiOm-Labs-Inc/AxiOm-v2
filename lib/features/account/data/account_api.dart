@@ -15,6 +15,16 @@ class AccountUnauthorizedException implements Exception {
   String toString() => 'AccountUnauthorizedException($endpoint)';
 }
 
+/// Сервер отказал в сбросе ссылки. [code]: not_found | cooldown | failed.
+class AccountResetLinkException implements Exception {
+  const AccountResetLinkException(this.code, {this.retryIn});
+  final String code;
+  final int? retryIn;
+
+  @override
+  String toString() => 'AccountResetLinkException($code)';
+}
+
 /// Client for the Personal Account API (v4.2.0).
 ///
 /// Base URL: https://axiom.arcohouse.space
@@ -113,6 +123,39 @@ class AccountApi with InfraLogger {
         throw const AccountUnauthorizedException('/telemost/credentials');
       }
       if (code == 403 || code == 503 || code == 429) return null;
+      rethrow;
+    }
+  }
+
+  // ── POST /api/app/reset_link ───────────────────────────────────────────
+
+  /// Сбрасывает ссылку подписки: {ok, username, sub_url, old_sub_url}.
+  /// Ошибки приходят кодом в [AccountResetLinkException]: not_found,
+  /// cooldown (с retry_in в секундах), failed.
+  Future<Map<String, dynamic>> resetLink(String sessionToken, String username) async {
+    try {
+      final res = await httpClient.post(
+        '$baseUrl/api/app/reset_link',
+        data: jsonEncode({'username': username}),
+        extraHeaders: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $sessionToken',
+        },
+      );
+      return _decode(res.data, '/reset_link');
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 401) throw const AccountUnauthorizedException('/reset_link');
+      if (code != null) {
+        Map<String, dynamic> body = const {};
+        try {
+          body = _decode(e.response!.data, '/reset_link');
+        } catch (_) {}
+        throw AccountResetLinkException(
+          body['error'] as String? ?? (code == 429 ? 'cooldown' : 'failed'),
+          retryIn: (body['retry_in'] as num?)?.toInt(),
+        );
+      }
       rethrow;
     }
   }
