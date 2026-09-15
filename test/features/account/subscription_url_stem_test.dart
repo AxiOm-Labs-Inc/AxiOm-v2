@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:axiom/features/account/model/account_models.dart';
+import 'package:axiom/features/connection/model/connection_failure.dart';
+import 'package:axiom/features/stats/stats_error_type.dart';
 
 void main() {
   group('subscriptionUrlStem', () {
@@ -29,6 +31,19 @@ void main() {
       expect(subscriptionUrlStem('https://p.example.com/api/u1/k'), isNull);
       expect(subscriptionUrlStem('vless://uuid@host:443'), isNull);
       expect(subscriptionUrlStem('not a url'), isNull);
+    });
+  });
+
+  group('statsErrorType', () {
+    test('connection failures get stable names, not generated class names', () {
+      expect(statsErrorType(const ConnectionFailure.missingVpnPermission('text with 1.2.3.4')), 'MissingVpnPermission');
+      expect(statsErrorType(const ConnectionFailure.invalidConfig()), 'InvalidConfig');
+      expect(statsErrorType(ConnectionFailure.unexpected(StateError('secret'))), 'Unexpected.StateError');
+      expect(statsErrorType(const ConnectionFailure.unexpected()), 'Unexpected');
+    });
+
+    test('other errors are reduced to their type', () {
+      expect(statsErrorType(const FormatException('https://leak.example/sub/x')), 'FormatException');
     });
   });
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:axiom/core/haptic/haptic_service.dart';
@@ -17,6 +18,8 @@ import 'package:axiom/features/wbstream_tunnel/model/wbstream_settings.dart';
 import 'package:axiom/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:axiom/axiomcore/init_signal.dart';
 import 'package:axiom/utils/utils.dart';
+import 'package:axiom/features/proxy/active/active_proxy_notifier.dart';
+import 'package:axiom/features/stats/app_stats_service.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -38,6 +41,11 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       if (previous == next) return;
       if (previous case AsyncData(:final value) when !value.isConnected) {
         if (next case AsyncData(value: final Connected _)) {
+          unawaited(
+            ref.read(appStatsProvider).connectSucceeded(
+              ref.read(activeProxyNotifierProvider.future).then<String?>((o) => o.type),
+            ),
+          );
           await ref.read(hapticServiceProvider.notifier).heavyImpact();
 
           if (Platform.isAndroid && !ref.read(Preferences.storeReviewedByUser)) {
@@ -62,6 +70,13 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     yield* _connectionRepo.watchConnectionStatus().doOnData((event) {
       if (event case Disconnected(connectionFailure: final _?) when PlatformUtils.isDesktop) {
         ref.read(Preferences.startedByUser.notifier).update(false);
+      }
+      if (event case Disconnected(:final connectionFailure)) {
+        final stats = ref.read(appStatsProvider);
+        if (connectionFailure != null) stats.connectFailed(connectionFailure);
+        // Пока ядро у туннельного режима, запрос провайдера ушёл бы через его
+        // выход — провайдер человека оттуда не виден.
+        if (ref.read(coreOwnerProvider) != CoreOwner.wbstream) stats.disconnected();
       }
       loggy.info("connection status: ${event.format()}");
     });
@@ -158,6 +173,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       loggy.info("no active profile, not connecting");
       return;
     }
+    ref.read(appStatsProvider).connectStarted();
 
     // Refresh subscription before connecting for remote profiles.
     if (initialProfile is RemoteProfileEntity) {
@@ -187,6 +203,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       ConnectionFailure err,
     ) async {
       loggy.warning("error connecting", err);
+      ref.read(appStatsProvider).connectFailed(err);
       //Go err is not normal object to see the go errors are string and need to be dumped
       await ref
           .read(dialogNotifierProvider.notifier)

@@ -277,8 +277,8 @@
           "light": "Light mode",
           "black": "Black mode"
         },
-        "enableAnalytics": "Enable analytics",
-        "enableAnalyticsMsg": "Give permission to collect analytics and send crash reports to improve the app",
+        "enableAnalytics": "Anonymous statistics",
+        "enableAnalyticsMsg": "App version, OS, protocol and mode, whether the connection succeeded, connection time, crashes and internet provider. No IP addresses, links or accounts. Provider data: DB-IP.com",
         "autoIpCheck": "Automatically check connection IP",
         "dynamicNotification": "Display speed in notification",
         "hapticFeedback": "Haptic feedback",
