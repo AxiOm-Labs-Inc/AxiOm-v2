@@ -12,6 +12,8 @@ class AccountSubscription with _$AccountSubscription {
   const factory AccountSubscription({
     required String subUrl,
     required String status,
+    /// Имя пользователя в панели — им подписку адресует сброс ссылки.
+    @Default('') String username,
     String? expire,
     int? expireEpoch,
     @Default(0) int usedTraffic,
@@ -57,6 +59,7 @@ AccountSubscription parseSubscription(Map<String, dynamic> json) {
   return AccountSubscription(
     subUrl: json['sub_url'] as String? ?? '',
     status: json['status'] as String? ?? 'unknown',
+    username: json['username'] as String? ?? '',
     expire: _parseExpire(json['expire']),
     expireEpoch: _parseExpireEpoch(json['expire']),
     usedTraffic: (json['used_traffic'] as num?)?.toInt() ?? 0,
@@ -88,6 +91,18 @@ String? _parseExpire(dynamic raw) {
     return DateFormat('dd.MM.yyyy').format(date);
   }
   return null;
+}
+
+/// Ссылка подписки Marzneshin: `…/sub/<username>/<key>`. Часть до ключа
+/// переживает сброс ссылки — по ней профиль со старой ссылкой узнаётся как
+/// «тот же, только с новым ключом». null — ссылка другого вида.
+String? subscriptionUrlStem(String url) {
+  final uri = Uri.tryParse(url.trim());
+  if (uri == null || !uri.hasScheme) return null;
+  final segs = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+  final i = segs.lastIndexOf('sub');
+  if (i < 0 || segs.length != i + 3) return null;
+  return '${uri.scheme}://${uri.authority}/${segs.take(i + 2).join('/')}/';
 }
 
 // ── API /me feature flags ───────────────────────────────────────────────────

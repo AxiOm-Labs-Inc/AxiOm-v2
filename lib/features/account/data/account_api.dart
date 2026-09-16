@@ -15,6 +15,16 @@ class AccountUnauthorizedException implements Exception {
   String toString() => 'AccountUnauthorizedException($endpoint)';
 }
 
+/// Сервер отказал в сбросе ссылки. [code]: not_found | cooldown | failed.
+class AccountResetLinkException implements Exception {
+  const AccountResetLinkException(this.code, {this.retryIn});
+  final String code;
+  final int? retryIn;
+
+  @override
+  String toString() => 'AccountResetLinkException($code)';
+}
+
 /// Client for the Personal Account API (v4.2.0).
 ///
 /// Base URL: https://axiom.arcohouse.space
@@ -117,6 +127,39 @@ class AccountApi with InfraLogger {
     }
   }
 
+  // ── POST /api/app/reset_link ───────────────────────────────────────────
+
+  /// Сбрасывает ссылку подписки: {ok, username, sub_url, old_sub_url}.
+  /// Ошибки приходят кодом в [AccountResetLinkException]: not_found,
+  /// cooldown (с retry_in в секундах), failed.
+  Future<Map<String, dynamic>> resetLink(String sessionToken, String username) async {
+    try {
+      final res = await httpClient.post(
+        '$baseUrl/api/app/reset_link',
+        data: jsonEncode({'username': username}),
+        extraHeaders: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $sessionToken',
+        },
+      );
+      return _decode(res.data, '/reset_link');
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      if (code == 401) throw const AccountUnauthorizedException('/reset_link');
+      if (code != null) {
+        Map<String, dynamic> body = const {};
+        try {
+          body = _decode(e.response!.data, '/reset_link');
+        } catch (_) {}
+        throw AccountResetLinkException(
+          body['error'] as String? ?? (code == 429 ? 'cooldown' : 'failed'),
+          retryIn: (body['retry_in'] as num?)?.toInt(),
+        );
+      }
+      rethrow;
+    }
+  }
+
   // ── GET /api/app/tariffs ───────────────────────────────────────────────
 
   /// Tariff catalogue for the purchase sheet.
@@ -137,8 +180,13 @@ class AccountApi with InfraLogger {
   /// [sessionToken] is optional: the expiry banner is also shown to users who
   /// never connected a Telegram account. With a token the purchase is bound to
   /// the account, without one the response carries a claim_url to bind later.
+  /// [expectedPrice] — цена, которую покупатель видит на кнопке. Каталог
+  /// читается один раз, при открытии листа, и к моменту оплаты мог устареть;
+  /// сервер сверяет её с текущей и отвечает 409 `price_changed`, не создавая
+  /// платёж. Без этого поля (старые сборки) проверки нет.
   Future<Map<String, dynamic>> createPayment({
     required int tariffIdx,
+    int? expectedPrice,
     String? method,
     String? promo,
     String? sessionToken,
@@ -147,6 +195,7 @@ class AccountApi with InfraLogger {
       '$baseUrl/api/app/payment',
       data: jsonEncode({
         'tariff_idx': tariffIdx,
+        if (expectedPrice != null) 'expected_price': expectedPrice,
         if (method != null) 'method': method,
         if (promo != null && promo.isNotEmpty) 'promo': promo,
       }),

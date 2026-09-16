@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:axiom/core/localization/translations.dart';
 import 'package:axiom/core/model/app_colors.dart';
+import 'package:axiom/features/account/data/account_api.dart';
 import 'package:axiom/features/account/model/account_models.dart';
+import 'package:axiom/features/account/notifier/account_notifier.dart';
 import 'package:axiom/features/account/widget/purchase_options_sheet.dart';
 import 'package:axiom/features/profile/notifier/profile_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -21,6 +24,7 @@ class AccountSubscriptionTile extends HookConsumerWidget {
     final a = ref.watch(translationsProvider).requireValue.pages.profiles.account;
     final sub = subscription;
     final days = sub.daysLeft;
+    final resetting = useState(false);
 
     return Card(
       elevation: 0,
@@ -106,12 +110,55 @@ class AccountSubscriptionTile extends HookConsumerWidget {
                     theme: theme,
                   ),
                 ],
+                // Старые версии сервера не присылали username — сбрасывать нечем.
+                if (sub.username.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _ActionChip(
+                    icon: Icons.restart_alt_rounded,
+                    label: resetting.value ? a.resetLinkProgress : a.resetLink,
+                    onTap: resetting.value ? () {} : () => _confirmReset(context, ref, resetting),
+                    theme: theme,
+                  ),
+                ],
               ],
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+extension on AccountSubscriptionTile {
+  Future<void> _confirmReset(BuildContext context, WidgetRef ref, ValueNotifier<bool> resetting) async {
+    final a = ref.read(translationsProvider).requireValue.pages.profiles.account;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(a.resetLinkTitle),
+        content: SingleChildScrollView(child: Text(a.resetLinkDesc)),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(a.cancel)),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text(a.resetLinkConfirm)),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    resetting.value = true;
+    String message;
+    try {
+      await ref.read(accountNotifierProvider.notifier).resetLink(subscription);
+      message = a.resetLinkDone;
+    } on AccountResetLinkException catch (e) {
+      message = e.code == 'cooldown' ? a.resetLinkCooldown : a.resetLinkFailed;
+    } catch (_) {
+      message = a.resetLinkFailed;
+    } finally {
+      // Карточка могла пересоздаться после обновления списка подписок.
+      if (context.mounted) resetting.value = false;
+    }
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 }
 

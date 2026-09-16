@@ -107,6 +107,10 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
   /// alone — they refresh themselves via the periodic updater and the
   /// connect-time refresh — so a sync never steals the active profile.
   /// Errors are logged and never break login/refresh.
+  ///
+  /// Ссылку могли сбросить в боте или на сайте: тогда профиль со старой
+  /// ссылкой (тот же `…/sub/<username>/`, другой ключ) переписывается на новую,
+  /// а не остаётся мёртвым рядом со свежеимпортированным двойником.
   Future<void> _syncActiveSubscriptions(List<AccountSubscription> subs) async {
     final repo = ref.read(profileRepositoryProvider).valueOrNull;
     if (repo == null) return;
@@ -115,6 +119,14 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
       try {
         final exists = await repo.existsByUrl(sub.subUrl).getOrElse((_) => true).run();
         if (exists) continue;
+        final stem = subscriptionUrlStem(sub.subUrl);
+        if (stem != null) {
+          final replaced = await repo.replaceRemoteUrl(stem, sub.subUrl).getOrElse((err) {
+            loggy.warning('relinking profile after link reset failed', err);
+            return false;
+          }).run();
+          if (replaced) continue;
+        }
         loggy.info('auto-importing active subscription [${sub.tariff.isNotEmpty ? sub.tariff : sub.subUrl}]');
         await repo.upsertRemote(sub.subUrl).match(
           (err) {
@@ -267,6 +279,33 @@ class AccountNotifier extends _$AccountNotifier with AppLogger {
       loggy.warning('refresh failed: $e');
       return false;
     }
+  }
+
+  /// Сбрасывает ссылку подписки [sub] и переводит её профиль на новую ссылку.
+  /// Бросает [AccountResetLinkException] (отказ сервера) и сетевые ошибки —
+  /// экран показывает их сам. Сессия умерла — выходим, как и в [refresh].
+  Future<void> resetLink(AccountSubscription sub) async {
+    final current = state;
+    if (current is! AccountStateConnected) return;
+    final api = ref.read(accountApiProvider);
+    final Map<String, dynamic> res;
+    try {
+      res = await api.resetLink(current.session.sessionToken, sub.username);
+    } on AccountUnauthorizedException {
+      await logout();
+      rethrow;
+    }
+    final newUrl = res['sub_url'] as String? ?? '';
+    final oldUrl = res['old_sub_url'] as String? ?? sub.subUrl;
+    final repo = ref.read(profileRepositoryProvider).valueOrNull;
+    if (repo != null && newUrl.isNotEmpty) {
+      final replaced = await repo.replaceRemoteUrl(oldUrl, newUrl).getOrElse((err) {
+        loggy.warning('relinking profile after link reset failed', err);
+        return false;
+      }).run();
+      loggy.info('subscription link reset, profile ${replaced ? "relinked" : "not found"}');
+    }
+    await refresh();
   }
 
   /// Logs out: revokes session token (best-effort), clears secure storage.

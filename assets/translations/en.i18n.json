@@ -212,7 +212,15 @@
         "daysLeftLabel": "${days} days left",
         "oneDayLeft": "1 day left",
         "lastDay": "Last day",
-        "expiredAgo": "Expired ${days} days ago"
+        "expiredAgo": "Expired ${days} days ago",
+        "resetLink": "Reset link",
+        "resetLinkProgress": "Resetting…",
+        "resetLinkTitle": "Reset the subscription link?",
+        "resetLinkDesc": "You will get a new link and the old one will stop working immediately on every device it was added to, including yours. Traffic, remaining days and plan stay the same.\n\nOn this device the profile switches to the new link by itself. On other devices, add the new link again.",
+        "resetLinkConfirm": "Reset",
+        "resetLinkDone": "Link reset. The profile now uses the new link",
+        "resetLinkCooldown": "The link was reset just now. Try again in a few minutes",
+        "resetLinkFailed": "Could not reset the link. Try again later"
       }
     },
     "profileDetails": {
@@ -269,8 +277,8 @@
           "light": "Light mode",
           "black": "Black mode"
         },
-        "enableAnalytics": "Enable analytics",
-        "enableAnalyticsMsg": "Give permission to collect analytics and send crash reports to improve the app",
+        "enableAnalytics": "Anonymous statistics",
+        "enableAnalyticsMsg": "App version, OS, protocol and mode, whether the connection succeeded, connection time, crashes and internet provider. No IP addresses, links or accounts. Provider data: DB-IP.com",
         "autoIpCheck": "Automatically check connection IP",
         "dynamicNotification": "Display speed in notification",
         "hapticFeedback": "Haptic feedback",

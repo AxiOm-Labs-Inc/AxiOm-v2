@@ -4,7 +4,6 @@ import 'dart:math' as math;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:axiom/core/localization/translations.dart';
 import 'package:axiom/core/preferences/preferences_provider.dart';
@@ -12,6 +11,7 @@ import 'package:axiom/features/account/model/account_models.dart';
 import 'package:axiom/features/account/model/account_state.dart';
 import 'package:axiom/features/account/notifier/account_notifier.dart';
 import 'package:axiom/features/account/widget/payment_webview_page.dart';
+import 'package:axiom/features/account/widget/purchase_success_view.dart';
 import 'package:axiom/features/profile/data/profile_data_providers.dart';
 import 'package:axiom/features/profile/overview/profiles_notifier.dart';
 import 'package:axiom/utils/utils.dart';
@@ -334,19 +334,23 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
       startPolling(p.pid);
     }
 
+    // Каталог тарифов. Отдельной функцией, а не только в useEffect: тот же
+    // запрос нужен, когда сервер сообщил, что цена изменилась.
+    Future<void> loadTariffs() async {
+      final res = await ref.read(accountApiProvider).getTariffs();
+      final list = (res['tariffs'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      if (context.mounted) tariffs.value = list;
+    }
+
     // ── загрузка каталога и подхват незавершённой оплаты ─────────────────
     useEffect(
       () {
         var disposed = false;
         Future<void>(() async {
           try {
-            final api = ref.read(accountApiProvider);
-            final res = await api.getTariffs();
-            if (disposed) return;
-            final list = (res['tariffs'] as List? ?? [])
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-            tariffs.value = list;
+            await loadTariffs();
           } catch (e) {
             if (!disposed) loadError.value = _describeError(e);
           }
@@ -376,8 +380,9 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
     );
 
     // ── покупка ──────────────────────────────────────────────────────────
-    Future<void> buy(int idx) async {
+    Future<void> buy(_Plan plan) async {
       if (paying.value || hasPending) return;
+      final idx = plan.idx;
       paying.value = true;
       busyIdx.value = idx;
       payError.value = null;
@@ -387,6 +392,8 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         final promo = promoController.text.trim();
         final created = await api.createPayment(
           tariffIdx: idx,
+          // Цена, которую человек видит на кнопке прямо сейчас.
+          expectedPrice: plan.price,
           promo: promo.isEmpty ? null : promo,
           sessionToken: sessionToken,
         );
@@ -419,75 +426,28 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
         paying.value = false;
         busyIdx.value = null;
         payError.value = _describeError(e);
+        // Цену успели поменять, пока лист был открыт: платёж не создан, сервер
+        // вернул текущую. Перечитываем каталог — новая цена должна оказаться
+        // на кнопке, а не только в сообщении об ошибке.
+        if (e is DioException && e.response?.statusCode == 409) {
+          try {
+            await loadTariffs();
+          } catch (err) {
+            loggy.warning('tariff reload after price change failed: $err');
+          }
+        }
       }
     }
 
     // ── экран «оплачено» ─────────────────────────────────────────────────
     if (subUrl.value != null) {
-      final hint = imported.value
-          ? 'Подписка добавлена в профили и выбрана активной — если VPN был '
-              'включён, соединение переподключилось на неё. Если профиль не '
-              'появился, скопируйте ссылку и добавьте вручную.'
-          : 'Скопируйте ссылку и добавьте её в профили вручную.';
       final claim = claimUrl.value;
-
-      return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.check_circle_rounded, color: Colors.green, size: 26),
-                  const SizedBox(width: 10),
-                  Text('Подписка активна', style: theme.textTheme.titleMedium),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(hint, style: theme.textTheme.bodySmall),
-              if (claim != null && claim.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Чтобы привязать покупку к Telegram-аккаунту, откройте ссылку ниже.',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-              const SizedBox(height: 12),
-              SelectableText(
-                subUrl.value!,
-                maxLines: 2,
-                style: theme.textTheme.labelSmall?.copyWith(fontFamily: 'monospace'),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: subUrl.value!));
-                    },
-                    icon: const Icon(Icons.copy_rounded, size: 18),
-                    label: const Text('Скопировать'),
-                  ),
-                  if (claim != null && claim.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: () => UriUtils.tryLaunch(Uri.parse(claim)),
-                      icon: const Icon(Icons.link_rounded, size: 18),
-                      label: const Text('Привязать'),
-                    ),
-                  ],
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Готово'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+      return PurchaseSuccessView(
+        subUrl: subUrl.value!,
+        imported: imported.value,
+        claimUrl: claim,
+        onOpenClaim: claim == null || claim.isEmpty ? null : () => UriUtils.tryLaunch(Uri.parse(claim)),
+        onDone: () => Navigator.of(context).pop(),
       );
     }
 
@@ -605,7 +565,7 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                     telemostElsewhere: catalog.anyTelemost,
                     busy: busyIdx.value == shown[i].idx,
                     enabled: interactive,
-                    onTap: () => buy(shown[i].idx),
+                    onTap: () => buy(shown[i]),
                   ),
                   if (i != shown.length - 1) const SizedBox(height: 12),
                 ],
@@ -1088,12 +1048,20 @@ class _Segmented<T> extends StatelessWidget {
                                         ),
                                       ),
                                     ),
+                                    // Пометка тоже гибкая: пункт — половина
+                                    // ширины, и «3 месяца выгоднее» при
+                                    // крупном шрифте в неё не помещалось.
                                     if (o.hint != null) ...[
                                       const SizedBox(width: 5),
-                                      Text(
-                                        o.hint!,
-                                        style: theme.textTheme.labelSmall
-                                            ?.copyWith(color: Colors.green.shade600),
+                                      Flexible(
+                                        child: Text(
+                                          o.hint!,
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(color: Colors.green.shade600),
+                                        ),
                                       ),
                                     ],
                                   ],
@@ -1289,7 +1257,11 @@ class _PlanCard extends StatelessWidget {
                 onPressed: enabled && !busy ? onTap : null,
                 child: busy
                     ? _ButtonSpinner(color: cs.primary)
-                    : Text('Взять «${plan.tier}» за ${plan.price} ₽'),
+                    : Text(
+                        'Взять «${plan.tier}» за ${plan.price} ₽',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
               ),
             ),
         ],
@@ -1540,12 +1512,16 @@ class _PayButton extends StatelessWidget {
                     : Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            label,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: cs.onPrimary,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
+                          Flexible(
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: cs.onPrimary,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.2,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),

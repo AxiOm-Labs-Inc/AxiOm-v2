@@ -27,6 +27,7 @@ import 'package:axiom/features/window/notifier/window_notifier.dart';
 import 'package:axiom/axiomcore/axiom_core_service_provider.dart';
 import 'package:axiom/riverpod_observer.dart';
 import 'package:axiom/utils/utils.dart';
+import 'package:axiom/features/stats/app_stats_service.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async {
@@ -34,8 +35,16 @@ Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async
     FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   }
   LoggerController.preInit();
-  FlutterError.onError = Logger.logFlutterError;
-  WidgetsBinding.instance.platformDispatcher.onError = Logger.logPlatformDispatcherError;
+  // Падения идут и в журнал, и в анонимную статистику (features/stats) —
+  // до старта сервиса статистики запись в неё просто пропускается.
+  FlutterError.onError = (details) {
+    Logger.logFlutterError(details);
+    if (!details.silent) AppStatsCrashSink.record(details.exception);
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stackTrace) {
+    AppStatsCrashSink.record(error);
+    return Logger.logPlatformDispatcherError(error, stackTrace);
+  };
 
   final stopWatch = Stopwatch()..start();
 
@@ -80,6 +89,7 @@ Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async
   await _init("profile repository", () => container.read(profileRepositoryProvider.future));
 
   await _init("translations", () => container.read(translationsProvider.future));
+  await _safeInit("app stats", () async => container.read(appStatsProvider));
 
   await _safeInit("active profile", () => container.read(activeProfileProvider.future), timeout: 1000);
   // Start syncing the offline server list with the active profile right away.

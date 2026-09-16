@@ -8,8 +8,10 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
+import android.telephony.TelephonyManager
 import android.util.Base64
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -43,6 +45,7 @@ class PlatformSettingsHandler : FlutterPlugin, MethodChannel.MethodCallHandler, 
             RequestIgnoreBatteryOptimizations("request_ignore_battery_optimizations"),
             GetInstalledPackages("get_installed_packages"),
             GetPackagesIcon("get_package_icon"),
+            GetNetworkInfo("get_network_info"),
         }
     }
 
@@ -180,6 +183,36 @@ class PlatformSettingsHandler : FlutterPlugin, MethodChannel.MethodCallHandler, 
                     val base64: String =
                         Base64.encodeToString(byteArrayOutputStream.toByteArray(), Base64.NO_WRAP)
                     success(base64)
+                }
+            }
+
+            // Для анонимной статистики (lib/features/stats): тип сети и оператор
+            // SIM. Оператор отдаёт TelephonyManager без разрешений; номер
+            // телефона и идентификаторы SIM не читаем.
+            Trigger.GetNetworkInfo.method -> {
+                // runCatching здесь не годится: при исключении он молча глотает
+                // его, и вызов со стороны Dart не получил бы ответа вовсе.
+                try {
+                    val ctx = Application.application
+                    val cm = Application.connectivity
+                    // Активная сеть при поднятом VPN — сам туннель, поэтому
+                    // смотрим на транспорт под ним.
+                    @Suppress("DEPRECATION")
+                    val caps = cm.allNetworks
+                        .mapNotNull { cm.getNetworkCapabilities(it) }
+                        .filterNot { it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) }
+                        .firstOrNull { it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) }
+                    val netType = when {
+                        caps == null -> null
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+                        else -> "other"
+                    }
+                    val tm = ctx.getSystemService(android.content.Context.TELEPHONY_SERVICE) as? TelephonyManager
+                    result.success(mapOf("net_type" to netType, "carrier" to (tm?.simOperatorName ?: "")))
+                } catch (e: Exception) {
+                    result.error("network_info", e.javaClass.simpleName, null)
                 }
             }
 

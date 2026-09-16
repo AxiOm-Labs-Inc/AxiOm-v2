@@ -31,6 +31,13 @@ class GeneralPage extends HookConsumerWidget {
             secondary: const Icon(Icons.flag_rounded),
             onChanged: ref.read(Preferences.autoCheckIp.notifier).update,
           ),
+          SwitchListTile.adaptive(
+            title: Text(t.pages.settings.general.enableAnalytics),
+            subtitle: Text(t.pages.settings.general.enableAnalyticsMsg),
+            secondary: const Icon(Icons.insights_rounded),
+            value: ref.watch(Preferences.anonymousStats),
+            onChanged: ref.read(Preferences.anonymousStats.notifier).update,
+          ),
           if (PlatformUtils.isAndroid) ...[
             SwitchListTile.adaptive(
               title: Text(t.pages.settings.general.dynamicNotification),

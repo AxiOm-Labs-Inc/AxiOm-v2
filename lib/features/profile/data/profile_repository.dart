@@ -21,6 +21,11 @@ abstract interface class ProfileRepository {
   TaskEither<ProfileFailure, Unit> init();
   TaskEither<ProfileFailure, ProfileEntity?> getById(String id);
   TaskEither<ProfileFailure, bool> existsByUrl(String url);
+  /// Переписывает ссылку профиля, чья ссылка содержит [match], на [newUrl] и
+  /// скачивает по ней подписку. true — такой профиль был и теперь на новой
+  /// ссылке. Нужен после сброса ссылки подписки: профиль остаётся тем же
+  /// (выбранным, со своими настройками), меняется только адрес.
+  TaskEither<ProfileFailure, bool> replaceRemoteUrl(String match, String newUrl);
   TaskEither<ProfileFailure, Unit> setAsActive(String id);
   TaskEither<ProfileFailure, Unit> deleteById(String id, bool isActive);
   Stream<Either<ProfileFailure, ProfileEntity?>> watchActiveProfile();
@@ -83,6 +88,23 @@ class ProfileRepositoryImpl with ExceptionHandler, InfraLogger implements Profil
       () async => await _profileDataSource.getByUrl(url) != null,
       ProfileUnexpectedFailure.new,
     );
+  }
+
+  @override
+  TaskEither<ProfileFailure, bool> replaceRemoteUrl(String match, String newUrl) {
+    return TaskEither<ProfileFailure, ProfileEntry?>.tryCatch(
+      () => _profileDataSource.getByUrl(match),
+      ProfileUnexpectedFailure.new,
+    ).flatMap((entry) {
+      if (entry == null || entry.url == null || entry.url == newUrl) {
+        return TaskEither.right(false);
+      }
+      loggy.info("profile [${entry.id}]: subscription link was reset, switching to the new one");
+      return TaskEither<ProfileFailure, Unit>.tryCatch(() async {
+        await _profileDataSource.edit(entry.id, ProfileEntriesCompanion(url: Value(newUrl)));
+        return unit;
+      }, ProfileUnexpectedFailure.new).flatMap((_) => upsertRemote(newUrl)).map((_) => true);
+    });
   }
 
   @override
