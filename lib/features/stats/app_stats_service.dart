@@ -8,6 +8,7 @@ import 'package:axiom/core/model/constants.dart';
 import 'package:axiom/core/model/windows_admin.dart';
 import 'package:axiom/core/preferences/general_preferences.dart';
 import 'package:axiom/core/preferences/preferences_provider.dart';
+import 'package:axiom/features/proxy/data/proxy_data_providers.dart';
 import 'package:axiom/features/settings/data/config_option_repository.dart';
 import 'package:axiom/features/stats/stats_error_type.dart';
 import 'package:axiom/singbox/model/singbox_config_enum.dart';
@@ -111,7 +112,10 @@ class AppStatsService {
   }
 
   /// Подключились. Время фиксируем сразу, протокол ядро отдаёт чуть позже.
-  Future<void> connectSucceeded(Future<String?> protocol) async {
+  ///
+  /// Статус «подключено» бывает и без нажатия: Телемост, смена профиля,
+  /// VPN, поднятый системой. Такие не считаем — попытки у них нет.
+  Future<void> connectSucceeded(Future<String?> Function() protocol) async {
     final sw = _attempt;
     if (sw == null) return;
     _attempt = null;
@@ -120,7 +124,7 @@ class AppStatsService {
     final net = _attemptNet;
     String? proto;
     try {
-      proto = await protocol.timeout(const Duration(seconds: 5));
+      proto = await protocol().timeout(const Duration(seconds: 15));
     } catch (_) {}
     _add({'type': 'connect', 'ok': true, 'ms': ms, 'protocol': proto, 'mode': _mode(), ...net});
   }
@@ -138,6 +142,33 @@ class AppStatsService {
   void disconnected() {
     if (!_enabled) return;
     unawaited(_refreshNet());
+  }
+
+  /// Протокол сервера, через который реально идёт трафик. Выбранный в
+  /// списке элемент часто сам группа («авто» выбирает сервер по пингу),
+  /// поэтому идём по цепочке выбора до настоящего сервера. Никогда не
+  /// бросает: сбой здесь — просто «протокол неизвестен».
+  Future<String?> activeProtocol() async {
+    try {
+      // Ядро отдаёт список серверов не сразу после статуса «подключено»
+      await Future<void>.delayed(const Duration(seconds: 2));
+      final group = await _ref
+          .read(proxyRepositoryProvider)
+          .watchProxies()
+          .map((e) => e.getOrElse((_) => null))
+          .firstWhere((g) => g != null && g.items.isNotEmpty)
+          .timeout(const Duration(seconds: 10));
+      var tag = group!.selected;
+      for (var hop = 0; hop < 4; hop++) {
+        final item = group.items.where((i) => i.tag == tag).firstOrNull;
+        if (item == null) return null;
+        if (!item.isGroup) return item.type;
+        tag = item.groupSelectedTag;
+      }
+    } catch (e) {
+      _log.debug('active protocol lookup failed: $e');
+    }
+    return null;
   }
 
   void recordCrash(Object error) {

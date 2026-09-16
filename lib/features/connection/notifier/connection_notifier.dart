@@ -18,7 +18,6 @@ import 'package:axiom/features/wbstream_tunnel/model/wbstream_settings.dart';
 import 'package:axiom/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:axiom/axiomcore/init_signal.dart';
 import 'package:axiom/utils/utils.dart';
-import 'package:axiom/features/proxy/active/active_proxy_notifier.dart';
 import 'package:axiom/features/stats/app_stats_service.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:in_app_review/in_app_review.dart';
@@ -41,11 +40,8 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       if (previous == next) return;
       if (previous case AsyncData(:final value) when !value.isConnected) {
         if (next case AsyncData(value: final Connected _)) {
-          unawaited(
-            ref.read(appStatsProvider).connectSucceeded(
-              ref.read(activeProxyNotifierProvider.future).then<String?>((o) => o.type),
-            ),
-          );
+          final stats = ref.read(appStatsProvider);
+          unawaited(stats.connectSucceeded(stats.activeProtocol));
           await ref.read(hapticServiceProvider.notifier).heavyImpact();
 
           if (Platform.isAndroid && !ref.read(Preferences.storeReviewedByUser)) {
