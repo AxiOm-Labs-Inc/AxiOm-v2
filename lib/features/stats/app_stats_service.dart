@@ -67,7 +67,7 @@ class AppStatsService {
   static const _installKey = 'stats_install_id';
   static const _maxQueue = 200;
   static const _batch = 100;
-  static const _channel = MethodChannel('com.hiddify.app/platform');
+  static const _channel = MethodChannel('app.axiom/platform');
 
   Timer? _timer;
   bool _flushing = false;
