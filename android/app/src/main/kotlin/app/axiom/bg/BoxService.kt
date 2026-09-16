@@ -298,6 +298,7 @@ class BoxService(
                 Mobile.close(4L)
                 status.value = Status.Stopped
                 service.stopSelf()
+                app.axiom.TunnelMethodHandler.onCoreStopped()
             }
             notification.close()
         }

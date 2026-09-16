@@ -26,6 +26,7 @@ import 'package:axiom/features/per_app_proxy/overview/per_app_proxy_service_noti
 import 'package:axiom/features/profile/notifier/profiles_update_notifier.dart';
 import 'package:axiom/features/shortcut/shortcut_wrapper.dart';
 import 'package:axiom/features/system_tray/notifier/system_tray_notifier.dart';
+import 'package:axiom/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:axiom/features/window/widget/window_wrapper.dart';
 import 'package:axiom/axiomcore/axiom_core_service_provider.dart';
 import 'package:axiom/utils/utils.dart';
@@ -96,6 +97,9 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
 
     ref.listen(foregroundProfilesUpdateNotifierProvider, (_, _) {});
     if (PlatformUtils.isAndroid) ref.listen(perAppProxyServiceProvider, (_, _) {});
+    // Сразу, а не при первом показе вкладки: Телемост, переживший закрытие
+    // экрана, должен забрать ядро себе раньше, чем главная сочтёт его VPN.
+    if (PlatformUtils.isAndroid) ref.listen(wbstreamTunnelNotifierProvider, (_, _) {});
     if (PlatformUtils.isDesktop) ref.listen(systemTrayNotifierProvider, (_, _) {});
 
     // updating ActiveBreakpointNotifier value

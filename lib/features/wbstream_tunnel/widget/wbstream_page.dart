@@ -1,6 +1,7 @@
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:axiom/core/notification/in_app_notification_controller.dart';
@@ -12,6 +13,7 @@ import 'package:axiom/features/account/notifier/account_notifier.dart';
 import 'package:axiom/features/connection/model/connection_status.dart';
 import 'package:axiom/features/connection/model/core_owner.dart';
 import 'package:axiom/features/connection/notifier/connection_notifier.dart';
+import 'package:axiom/features/wbstream_tunnel/data/telemost_credentials_service.dart';
 import 'package:axiom/features/wbstream_tunnel/model/wbstream_settings.dart';
 import 'package:axiom/features/wbstream_tunnel/notifier/wbstream_tunnel_notifier.dart';
 import 'package:axiom/features/wbstream_tunnel/widget/wbstream_connect_button.dart';
@@ -349,12 +351,76 @@ class _WbstreamGateOverlay extends ConsumerWidget {
                         child: const Text('Подключить аккаунт'),
                       ),
                     ],
+                    const Gap(8),
+                    TextButton(
+                      onPressed: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => const _ActivationCodeDialog(),
+                      ),
+                      child: const Text('У меня есть код активации'),
+                    ),
                   ],
                 ),
               ),
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Ввод кода активации Телемоста — для тех, у кого не открывается ни наш
+/// сервер, ни Telegram (см. [TelemostCredentialsService.importActivationCode]).
+class _ActivationCodeDialog extends HookConsumerWidget {
+  const _ActivationCodeDialog();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = useTextEditingController();
+    final error = useState<String?>(null);
+
+    Future<void> activate() async {
+      final ok = await ref.read(telemostCredentialsServiceProvider).importActivationCode(controller.text);
+      if (!context.mounted) return;
+      if (ok) {
+        Navigator.of(context).pop();
+      } else {
+        error.value = 'Код не распознан — проверьте, что он скопирован целиком';
+      }
+    }
+
+    return AlertDialog(
+      title: const Text('Код активации'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: controller,
+            minLines: 2,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'AXT1-…',
+              errorText: error.value,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.content_paste_rounded, size: 18),
+              label: const Text('Вставить'),
+              onPressed: () async {
+                final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+                if (text != null) controller.text = text;
+              },
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Отмена')),
+        FilledButton(onPressed: activate, child: const Text('Активировать')),
       ],
     );
   }

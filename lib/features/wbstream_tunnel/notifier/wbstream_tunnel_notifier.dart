@@ -58,6 +58,33 @@ const _watchdogInterval = Duration(seconds: 12);
 class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with AppLogger {
   WbstreamTunnelNotifier(this._ref) : super(const WbstreamIdle()) {
     _loadSettings();
+    unawaited(_restoreRunning());
+  }
+
+  /// Подхватывает Телемост, переживший закрытие экрана: relay и ядро живут в
+  /// процессе, а экран (и этот notifier) создаётся заново, когда приложение
+  /// смахнули из недавних и открыли. Без этого ядро оставалось без владельца
+  /// и показывалось как обычный VPN.
+  Future<void> _restoreRunning() async {
+    final native = await _service.runningState();
+    if (native == null || state is! WbstreamIdle) return;
+    final config = native.config;
+    if (config == null || config.isEmpty) {
+      // Relay не успел подключиться, а ждавшая его попытка умерла вместе с
+      // прежним экраном — ядро на нём не запускалось, доводить нечего.
+      loggy.info('wbstream: relay from the previous screen never connected — stopping it');
+      await _service.stop();
+      return;
+    }
+    loggy.info('wbstream: picking up the running tunnel (relay ${native.status})');
+    _statusSub ??= _service.watchStatus().listen(_onStatus);
+    _coreStatusSub ??= _ref.read(connectionRepositoryProvider).watchConnectionStatus().listen(_onCoreStatus);
+    _socks = native.socks;
+    _coreConfig = config;
+    _tunnelVerified = true;
+    _ref.read(coreOwnerProvider.notifier).state = CoreOwner.wbstream;
+    state = native.status == 'connected' ? WbstreamConnected(native.socks) : const WbstreamLost();
+    _startWatchdog();
   }
 
   final Ref _ref;
@@ -116,6 +143,10 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   /// уведомлении) и выключить Телемост целиком, см. [_onCoreStatus].
   StreamSubscription<ConnectionStatus>? _coreStatusSub;
   bool _coreSeenConnected = false;
+
+  /// Последний статус ядра и отложенная проверка остановки, см. [_onCoreStatus].
+  ConnectionStatus? _lastCoreStatus;
+  Timer? _coreStopCheck;
 
   /// Ядро останавливаем мы сами (stopCore/_forceStopCore) — это не внешняя
   /// остановка.
@@ -328,6 +359,7 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     _restartingTunnel = true;
     try {
       loggy.warning('wbstream: watchdog restarting core (full-path probe silent)');
+      await _service.keepOnCoreStop();
       await stopCore();
       // The core stop is not instantaneous; starting on top of a still-
       // dying session fails and leaves «relay alive, core dead» for good.
@@ -370,6 +402,7 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
         return;
       }
       if (_ref.read(coreOwnerProvider) == CoreOwner.wbstream) {
+        await _service.keepOnCoreStop();
         await stopCore();
         // Let the old core fully die before starting on the new endpoint
         // (same race as in _restartCore).
@@ -454,6 +487,8 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   Future<bool> startCore() async {
     final current = state;
     if (current is! WbstreamConnected) return false;
+    // Неудачный старт и повтор ниже останавливают ядро — relay при этом нужен.
+    await _service.keepOnCoreStop();
     if (await _tryStartCore(current)) return true;
     // One retry after a full stop + settle: a half-dead previous session is
     // the common reason a start fails mid-tunnel.
@@ -543,6 +578,7 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
     final pending = _connectCompleter;
     if (pending != null && !pending.isCompleted) pending.complete(false);
     _stopWatchdog();
+    _coreStopCheck?.cancel();
     await stopCore();
     await _coreStatusSub?.cancel();
     _coreStatusSub = null;
@@ -592,19 +628,34 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   /// уведомления было нельзя. Теперь такая остановка выключает Телемост
   /// целиком (relay тоже). Свои остановки (stopCore, перезапуск watchdog)
   /// отсекаются флагами.
+  ///
+  /// «Остановлено» признаётся только если держится [_coreStopConfirmDelay]:
+  /// при возврате в приложение из недавних связь с ядром переподключается и
+  /// сначала отдаёт сброшенный на паузе статус STOPPED, а настоящий STARTED
+  /// приходит через доли секунды. Раньше Телемост на этом выключался — relay
+  /// убит, а ядро оставалось работать без владельца и показывалось как VPN
+  /// без интернета.
   void _onCoreStatus(ConnectionStatus status) {
     if (_ref.read(coreOwnerProvider) != CoreOwner.wbstream) return;
+    _lastCoreStatus = status;
     if (status is Connected) {
       _coreSeenConnected = true;
       return;
     }
     if (status is! Disconnected || !_coreSeenConnected) return;
     if (_stoppingCore || _restartingTunnel) return;
-    loggy.info('wbstream: core stopped outside the app — turning Telemost off');
-    _coreSeenConnected = false;
-    _ref.read(coreOwnerProvider.notifier).state = CoreOwner.none;
-    unawaited(deactivate());
+    _coreStopCheck?.cancel();
+    _coreStopCheck = Timer(_coreStopConfirmDelay, () {
+      if (_ref.read(coreOwnerProvider) != CoreOwner.wbstream) return;
+      if (_lastCoreStatus is! Disconnected || _stoppingCore || _restartingTunnel) return;
+      loggy.info('wbstream: core stopped outside the app — turning Telemost off');
+      _coreSeenConnected = false;
+      _ref.read(coreOwnerProvider.notifier).state = CoreOwner.none;
+      unawaited(deactivate());
+    });
   }
+
+  static const _coreStopConfirmDelay = Duration(seconds: 3);
 
   void _onStatus(WbstreamStatusEvent event) {
     // Тело config не логируем: в нём приватный WG-ключ и пароль SOCKS relay.
@@ -667,6 +718,7 @@ class WbstreamTunnelNotifier extends StateNotifier<WbstreamTunnelState> with App
   @override
   void dispose() {
     _watchdogTimer?.cancel();
+    _coreStopCheck?.cancel();
     unawaited(_coreStatusSub?.cancel());
     unawaited(_statusSub?.cancel());
     unawaited(_service.stop());

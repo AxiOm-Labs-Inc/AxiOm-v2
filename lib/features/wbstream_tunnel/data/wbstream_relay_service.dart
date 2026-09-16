@@ -53,6 +53,33 @@ class WbstreamRelayService with InfraLogger {
     }
   }
 
+  /// Предупреждает нативную часть, что следующая остановка ядра — наш
+  /// перезапуск: иначе вместе с ядром она гасит и relay.
+  Future<void> keepOnCoreStop() async {
+    try {
+      await _channel.invokeMethod('keepOnCoreStop');
+    } catch (e) {
+      loggy.warning('tunnel keepOnCoreStop failed: $e');
+    }
+  }
+
+  /// Relay, оставшийся от прежнего экрана: он живёт в процессе дольше
+  /// Flutter-движка. null — relay не запущен (или спросить не удалось).
+  Future<WbstreamNativeState?> runningState() async {
+    try {
+      final res = await _channel.invokeMethod<Map<dynamic, dynamic>>('state');
+      if (res == null || res['running'] != true || res['host'] == null) return null;
+      return WbstreamNativeState(
+        status: res['status'] as String? ?? '',
+        config: res['config'] as String?,
+        socks: WbstreamSocks.fromMap(res),
+      );
+    } catch (e) {
+      loggy.warning('tunnel state failed: $e');
+      return null;
+    }
+  }
+
   Stream<WbstreamStatusEvent> watchStatus() {
     return _statusChannel.receiveBroadcastStream().map((event) {
       final map = event as Map<dynamic, dynamic>;
@@ -62,6 +89,15 @@ class WbstreamRelayService with InfraLogger {
       );
     });
   }
+}
+
+class WbstreamNativeState {
+  const WbstreamNativeState({required this.status, required this.config, required this.socks});
+
+  /// Последний статус relay: starting | connecting | connected | lost | error.
+  final String status;
+  final String? config;
+  final WbstreamSocks socks;
 }
 
 final wbstreamRelayServiceProvider = Provider<WbstreamRelayService>(
