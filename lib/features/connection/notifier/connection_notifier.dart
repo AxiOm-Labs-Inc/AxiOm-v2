@@ -41,7 +41,12 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       if (previous case AsyncData(:final value) when !value.isConnected) {
         if (next case AsyncData(value: final Connected _)) {
           final stats = ref.read(appStatsProvider);
-          unawaited(stats.connectSucceeded(stats.activeProtocol));
+          // Подключение Телемоста — не исход нажатия «подключить» у VPN
+          if (ref.read(coreOwnerProvider) == CoreOwner.vpn) {
+            unawaited(stats.connectSucceeded(stats.activeProtocol));
+          } else {
+            stats.cancelAttempt();
+          }
           await ref.read(hapticServiceProvider.notifier).heavyImpact();
 
           if (Platform.isAndroid && !ref.read(Preferences.storeReviewedByUser)) {
@@ -211,6 +216,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> _disconnect() async {
+    ref.read(appStatsProvider).cancelAttempt();
     await _connectionRepo.disconnect().mapLeft((err) {
       loggy.warning("error disconnecting", err);
       ref

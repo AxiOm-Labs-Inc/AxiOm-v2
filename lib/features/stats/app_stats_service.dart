@@ -129,6 +129,11 @@ class AppStatsService {
     _add({'type': 'connect', 'ok': true, 'ms': ms, 'protocol': proto, 'mode': _mode(), ...net});
   }
 
+  /// Попытка кончилась без исхода: отключили во время подключения или ядро
+  /// забрал Телемост. Иначе следующее «подключено» в течение двух минут
+  /// засчиталось бы ей — со временем от первого нажатия.
+  void cancelAttempt() => _attempt = null;
+
   /// [error] — тип ошибки (имя класса), не текст: в тексте бывают адреса.
   void connectFailed(Object error) {
     final sw = _attempt;
