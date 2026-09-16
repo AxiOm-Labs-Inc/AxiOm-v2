@@ -69,7 +69,7 @@
 
 | Инструмент | Примечание |
 |---|---|
-| Visual Studio **Community** 2022 | нагрузка «Разработка классических приложений на C++» + компонент **ATL**. Одних Build Tools мало: без ATL падает `flutter_secure_storage_windows` (`atlstr.h`) |
+| Visual Studio **Community** (2022 или 2026) | нагрузка «Разработка классических приложений на C++» + компонент **ATL C++**. Без ATL падает `flutter_secure_storage_windows` (`atlstr.h`). Если рядом стоят Build Tools без ATL, CMake выбирает их сам — скрипт это обходит: находит студию с ATL и входит в её окружение |
 | NuGet CLI | `nuget.exe` в `PATH` или просто положить в `tools\nuget.exe` (скрипт подхватит). Скачать: https://dist.nuget.org/win-x86-commandline/latest/nuget.exe |
 | Inno Setup 6 | `winget install JRSoftware.InnoSetup`. Скрипт ищет `ISCC.exe` в `%LOCALAPPDATA%\Programs\Inno Setup 6` и `Program Files (x86)`, иначе задайте `INNO_SETUP_PATH` |
 
@@ -174,7 +174,9 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1
 powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -SkipGen
 ```
 
-Скрипт проверяет `.env`, ядро в `hiddify-core\bin`, NuGet и Inno Setup, затем:
+Скрипт проверяет `.env`, ядро в `hiddify-core\bin`, NuGet, Visual Studio с ATL
+и Inno Setup, входит в окружение этой студии (если прошлая сборка была другой
+студией — сбрасывает кэш CMake), затем:
 
 1. `flutter pub get`, `build_runner`.
 2. `flutter build windows --release -t lib/main_prod.dart --dart-define=DEVICE_API_KEY=…`
@@ -453,5 +455,6 @@ Release без `appcast.xml` = плашки нет. `appcast.xml` без асс�
 | 04.09 merge приватной ветки выложил механику Телемоста в публичный | `docs/PUBLISHING.md`, `scripts/check_public_tree.sh` |
 | Раздутое техническое описание `v4.4.0` пришлось срочно чистить | `docs/RELEASE_NOTES_FORMAT.md` |
 | До 4.5.0 AxiOm делил с настоящим Hiddify имена, порты и схему ссылок — установка одного мешала другому | не возвращать имена апстрима в `AxiOm.iss` и коде (`docs/REBRANDING.md`) |
+| Windows-сборка падала на `atlstr.h`: CMake взял Build Tools без ATL, хотя рядом стоит Community с ATL | `build_windows.ps1` сам выбирает студию с ATL |
 | `flutter clean` без нужды — долгая полная пересборка | при смене иконки Windows достаточно удалить `build\windows\x64\CMakeCache.txt` |
 | Релиз собран, `appcast.xml` не обновлён — обновление никто не получил | шаг 9.5 обязателен |

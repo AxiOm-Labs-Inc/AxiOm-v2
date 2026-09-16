@@ -30,7 +30,7 @@ sha256() {
 fetch() { # имя-архива ожидаемая-сумма каталог-назначения
   local name=$1 want=$2 dest=$3
   echo "→ $name"
-  curl -fL --retry 3 -o "$TMP/$name" "$BASE_URL/$name"
+  curl -fL -# --retry 3 -o "$TMP/$name" "$BASE_URL/$name"
   local got
   got=$(sha256 "$TMP/$name")
   if [ "$got" != "$want" ]; then

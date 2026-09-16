@@ -31,6 +31,24 @@ if (-not (Get-Command nuget -ErrorAction SilentlyContinue)) {
     else { Fail 'нет nuget.exe: скачайте https://dist.nuget.org/win-x86-commandline/latest/nuget.exe в tools\' }
 }
 
+# Visual Studio с ATL. Если рядом стоят Build Tools без ATL, CMake сам выберет
+# их и сборка упадёт на atlstr.h (flutter_secure_storage_windows). Входим в
+# окружение нужной студии: при заданном VSINSTALLDIR CMake берёт её.
+$VsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+if (-not (Test-Path $VsWhere)) { Fail 'не найден Visual Studio (vswhere.exe)' }
+$Vs = & $VsWhere -products * -latest -requires Microsoft.VisualStudio.Component.VC.ATL -property installationPath | Select-Object -First 1
+if (-not $Vs) { Fail 'нет Visual Studio с ATL: в установщике VS добавьте компонент «ATL C++» к «Разработке классических приложений на C++»' }
+if ($env:VSINSTALLDIR -ne "$Vs\") {
+    Import-Module "$Vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+    Enter-VsDevShell -VsInstallPath $Vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+}
+# Кэш CMake помнит студию прошлой сборки — с другой студией его нужно сбросить
+$Cache = 'build\windows\x64\CMakeCache.txt'
+if ((Test-Path $Cache) -and -not (Select-String -Path $Cache -SimpleMatch "CMAKE_GENERATOR_INSTANCE:INTERNAL=$($Vs -replace '\\', '/')" -Quiet)) {
+    Write-Host 'Прошлая сборка была другой студией — сбрасываю кэш CMake'
+    Remove-Item -Recurse -Force build\windows\x64
+}
+
 $Iscc = @(
     $(if ($env:INNO_SETUP_PATH) { Join-Path $env:INNO_SETUP_PATH 'ISCC.exe' }),
     "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
@@ -45,7 +63,8 @@ Write-Host "Сборка AxiOm $Version для Windows"
 # --- Сборка ----------------------------------------------------------------
 function Run($exe) {
     & $exe @args
-    if ($LASTEXITCODE -ne 0) { Fail "$exe $args — код $LASTEXITCODE" }
+    # Аргументы не печатаем: среди них DEVICE_API_KEY
+    if ($LASTEXITCODE -ne 0) { Fail "$exe $($args[0]) — код $LASTEXITCODE" }
 }
 Run flutter pub get
 if (-not $SkipGen) { Run dart run build_runner build --delete-conflicting-outputs }
