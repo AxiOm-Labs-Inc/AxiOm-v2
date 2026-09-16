@@ -1,140 +1,154 @@
-# Онбординг для агентов: клиентский репозиторий AxiOm (AxiOm-v2)
+# Онбординг: клиент AxiOm
 
-> Кому адресовано: любому агенту, который впервые открывает этот репозиторий.
-> Это **первое чтение** на 5 минут — карта remotes/worktree, что можно пушить куда,
-> как собрать, где секреты. Полные правила публикации и карта всех репозиториев
-> системы — в приватном `AxiOm_Architecture` (`AGENTS_REPO_POLICY.md`), ссылки ниже.
+> Приватный документ: в публичный `AxiOm-v2` не переносить.
 >
-> ⚠️ Если ты видишь этот файл — значит открыт **полный** (приватный) вариант дерева.
-> В публичном `AxiOm-v2` его нет (см. §2).
+> Первое чтение для любого, кто открыл этот репозиторий — человека или агента.
+> После него: [BUILD_AND_RELEASE.md](BUILD_AND_RELEASE.md) (сборка и релиз) и
+> [PUBLISHING.md](PUBLISHING.md) (что можно в публичный репозиторий).
 
 ---
 
-## 1. Что это за проект
+## 1. Что это
 
-AxiOm — VPN-клиент, форк [hiddify/hiddify-app](https://github.com/hiddify/hiddify-app)
-(Flutter + sing-box core), Android + Windows. Помимо стандартного VPN-функционала
-в приложении есть вкладка **«AxiOm Telemost»** — это прикрытие для отдельной подсистемы
-обхода whitelist-блокировок (внутреннее название **WBStream**). Название и иконку вкладки
-не переименовывать — историческое, на нём завязан флаг доступа `features.telemost`.
+AxiOm — VPN-клиент для **Android** и **Windows**. Форк
+[hiddify-app](https://github.com/hiddify/hiddify-app): Flutter-интерфейс поверх
+ядра sing-box (hiddify-core).
 
-Сопутствующий сервер-компонент (Go-релей `librelay.so`) живёт в отдельном
-репозитории `AxiOm-relay-dev` — см. §2.
+Своё поверх апстрима:
 
-С 4.5.0 идентификаторы апстрима убраны (пакет `axiom`, Android `app.axiom`, UA `AxiOm/…`).
-Что переименовано, что сознательно осталось от Hiddify и почему, как это связано с
-правилами панели — [`docs/REBRANDING.md`](REBRANDING.md). Прочитать до того, как трогать
-User-Agent, имена пакетов, каналов, схем или иконки.
+- **Личный кабинет** — вход через Telegram, подписка, оплата внутри приложения.
+- **Вкладка «Telemost»** — режим для белых списков: трафик идёт через
+  видеоканал, когда обычный VPN заблокирован. Внутреннее название механики —
+  **WBStream**. Название вкладки «Telemost» историческое, не переименовывать: на
+  нём завязан флаг доступа `features.telemost` на сервере.
+- **Свои идентификаторы** — пакет `app.axiom.vpn`, Dart-пакет `axiom`, свои порты
+  и схема `axiom://`, чтобы не конфликтовать с настоящим Hiddify
+  ([REBRANDING.md](REBRANDING.md) — прочитать до того, как трогать имена,
+  User-Agent, каналы или иконки).
+
+Серверная часть (бот, API кабинета, панель, держатели Телемоста) живёт в других
+репозиториях и на серверах — менять её отсюда не нужно.
 
 ---
 
-## 2. Remotes, ветки, worktree — не перепутать публичный/приватный
+## 2. Репозитории
 
-**Два remote в одном клоне:**
-
-```
-origin → github.com/AxiOm-Labs-Inc/AxiOm-v2      (🌍 публичный, очищенное дерево)
-dev    → github.com/AxiOm-Labs-Inc/AxiOm-v2-dev  (🔒 приватный, полное дерево)
-```
-
-**На диске несколько worktree одного и того же `.git`** (не отдельные клоны —
-`git worktree`, конфиг веток у них общий):
-
-| Каталог | Ветка | Назначение |
-|---|---|---|
-| `D:\Creativ\AxiOm_APP_v2\hiddify-app` | `master-private` | основной рабочий, полное дерево |
-| `D:\Creativ\AxiOm_APP_v2\_tm-auth` | `master` | часто боевая сборка/релиз |
-| `D:\Creativ\AxiOm_APP_v2\_fix-directdns` | `fix/pin-region-other` | незамерженный фикс (тумблер xray-ядра, регион `other`) |
-
-**Guard от случайного публичного пуша** — бесаргументный `git push` НЕ уходит в
-публичный `origin`:
-
-| Ветка | Куда уходит `git push` без аргументов |
+| Репозиторий | Что |
 |---|---|
-| `master` | в `dev` (`branch.master.pushRemote=dev`), `fetch`/`status` сверяются с `origin` |
-| `master-private` | напрямую в `dev` (`branch.master-private.remote=dev`) |
+| `AxiOm-Labs-Inc/AxiOm-v2-dev` 🔒 | **этот.** Вся работа, все сборки |
+| `AxiOm-Labs-Inc/AxiOm-v2` 🌍 | публичная витрина: Releases, `appcast.xml`. Код туда — только выборочно ([PUBLISHING.md](PUBLISHING.md)) |
+| `AxiOm-Labs-Inc/AxiOm-relay-dev` 🔒 | исходник `librelay.so` (Go). Нужен только для пересборки relay |
 
-Публикация в публичный репозиторий требует **явного** `git push origin <ветка>` —
-осознанного действия. Полное объяснение механизма (почему конфиг общий на все
-worktree, что делать при заведении новой ветки) — `AGENTS_REPO_POLICY.md` §3
-в `AxiOm_Architecture`.
-
-**Прежде чем пушить что-либо в `origin`** — прочитать `AGENTS_REPO_POLICY.md` §2.
-Коротко: 🔴 `lib/features/wbstream_tunnel/**`, `TunnelMethodHandler.kt` /
-`TunnelRelayController.kt`, `core_owner.dart`, `connect_lock_shield.dart` — только в
-`dev`, никогда в `origin`. 🔴 `android/app/src/main/jniLibs/**` (сам `librelay.so`) —
-никогда нигде в git, даже в `dev` (gitignored). 🟢 Остальное (оплата, UI, заглушка
-`telemost_placeholder_page.dart`, флаг фичи) — можно в публичный, но **выборочным
-переносом** файлов (`git checkout dev/master -- <путь>`), не мержем ветки — merge
-затягивает запретные файлы целиком (инцидент 04.09.2026 разобран там же).
+Ветка `master` — основная. Для задачи заводите ветку, в `master` — после проверки.
 
 ---
 
-## 3. Сборка
+## 3. Карта кода
+
+```
+lib/
+  main.dart, main_prod.dart   точки входа: dev и боевая (релиз — только main_prod)
+  bootstrap.dart              запуск: префы, миграции, ядро, проверка обновлений
+  axiomcore/                  обёртка ядра sing-box (gRPC/FFI), статусы подключения
+  singbox/                    модели конфига и опций ядра
+  core/                       общее: роутер, тема, локализация, префы и их миграции, http, логгер
+  features/
+    home/                     главный экран, кнопка подключения, счётчик устройств
+    connection/               состояние VPN-подключения
+    profile/                  профили (подписки), их обновление
+    account/                  личный кабинет: вход через Telegram, подписка, оплата
+    wbstream_tunnel/          🔒 вкладка Telemost (приватная)
+    app_update/               проверка и установка обновлений
+    settings/, per_app_proxy/, route_rules/, log/, stats/, about/, intro/ …
+  gen/                        сгенерированное (переводы, биндинги) — не править руками
+
+android/app/src/main/kotlin/app/axiom/
+  bg/BoxService.kt            сервис ядра (VPN)
+  TunnelMethodHandler.kt      🔒 канал Flutter ↔ relay Телемоста
+  TunnelRelayController.kt    🔒 запуск и статусы процесса librelay.so
+android/app/src/main/jniLibs/ 🔒 librelay.so
+
+windows/runner/               C++ раннер: права администратора, одна копия окна
+windows/packaging/exe/        установщик Inno Setup (AxiOm.iss)
+assets/translations/          строки интерфейса (*.i18n.json)
+scripts/                      сборка, проверки, скачивание ядра
+docs/                         документация (см. docs/README.md)
+```
+
+### Как устроен Телемост (в двух словах)
+
+1. Вкладка (`wbstream_page.dart`) → `WbstreamTunnelNotifier` получает секрет
+   аккаунта (`telemost_credentials_service.dart`: с сервера кабинета или из кода
+   активации `AXT1-…`).
+2. `TunnelMethodHandler` запускает `librelay.so` отдельным процессом. Relay сам
+   находит комнату, поднимает видеоканал и отдаёт готовый фрагмент конфига.
+3. То же ядро sing-box перезапускается с этим конфигом. Ядро одно на VPN и
+   Телемост; кто им сейчас владеет — `core_owner.dart`.
+4. Relay принадлежит процессу приложения, а не экрану: Телемост переживает
+   сворачивание и закрытие из недавних, новый экран подхватывает работающий
+   туннель (`_restoreRunning`). Остановка ядра из уведомления гасит и relay.
+
+Доступ к Телемосту даёт сервер (тариф + активная подписка); держатели на
+серверах проверяют секрет. Без действующей подписки relay не подключится.
+
+---
+
+## 4. Первые шаги
+
+1. Установить окружение и получить секреты — [BUILD_AND_RELEASE.md §2–3](BUILD_AND_RELEASE.md#2-подготовка-машины-один-раз).
+2. `scripts/fetch_core.sh` и `scripts/build_android.sh` — если APK собрался и
+   `verify_apk.py` зелёный, машина готова.
+3. Поставить APK на телефон и пройти: подключение VPN, вход в кабинет, Телемост.
+
+---
+
+## 5. Как работать каждый день
 
 ```bash
-flutter pub get
-# нативные библиотеки sing-box подтягиваются Makefile-таргетами, ядро уже
-# должно быть скачано в hiddify-core/bin — не гонять flutter clean без нужды
-flutter build apk --release --dart-define=DEVICE_API_KEY=<ключ>
-flutter build windows --release --dart-define=DEVICE_API_KEY=<ключ>
+git switch master && git pull          # всегда перед началом: в репозиторий пишут несколько человек и агентов
+git switch -c <задача>
+# ... правки ...
+dart run build_runner build --delete-conflicting-outputs   # если трогали модели, провайдеры, переводы
+flutter analyze lib/features lib/core                       # 0 ошибок
+git commit                                                   # формат — docs/COMMIT_FORMAT.md
+git push -u origin <задача>
 ```
 
-Без `--dart-define=DEVICE_API_KEY` сборка соберётся, но счётчик устройств в
-приложении молча пропадёт (не упадёт, просто не покажет цифру) — известная готча,
-проверялась на боевых релизах.
-
-**`librelay.so` не в git — перед релизной сборкой пересобрать его из `main`
-`AxiOm-relay-dev`** (`relay/`, `CGO_ENABLED=0 GOOS=linux GOARCH=arm64` и
-`GOARCH=arm GOARM=7`, `-trimpath -ldflags="-s -w"`, вывод в `jniLibs/<abi>/`).
-Устаревший бинарь молча ломает Телемост: 4.4.2 и 4.4.3 вышли с relay от 04.09 16:12 —
-без ротации серверного WG-ключа и с ранним CONNECTED до CONFIG (в логе
-`connected but no config received`). Проверка: `grep -ac gatedStatus
-android/app/src/main/jniLibs/arm64-v8a/librelay.so` — не 0.
-
-При смене иконки/сплэша — удалить `build\windows\x64\CMakeCache.txt`, не весь
-`flutter clean` (полная пересборка ядра долгая и не нужна).
+- **Перед началом задачи** — `git pull` и `git log --oneline -20`: задача могла
+  быть уже сделана кем-то параллельно.
+- **Коммиты** — по-русски, заголовок `Область: что стало`, в теле — почему
+  ([COMMIT_FORMAT.md](COMMIT_FORMAT.md)).
+- **Проверка на устройстве** обязательна для всего, что касается подключения,
+  Телемоста и жизненного цикла приложения — в эмуляторе это не воспроизводится.
+- Логи Android: `adb logcat -v time | grep -iE "axiom|flutter|relay|BoxService"`.
 
 ---
 
-## 4. Секреты — не в этом репозитории, даже в приватном
+## 6. Правила, которые нельзя нарушать
 
-Гитигнорено (проверить `git status`, что не попало в коммит):
-- `android/key.properties`, `android/app/release.jks` — подпись релиза.
-- `android/app/src/main/jniLibs/**` — сам `librelay.so`.
-- Значение `DEVICE_API_KEY` — только в команде сборки/CI-переменной, не в коде.
-
-Реальные значения (ключ, где взять/сгенерировать keystore) — в
-`dev-docs/DEVELOPMENT.md` (сам каталог `dev-docs/` **вне git**, соседний с
-worktree, не коммитить туда ничего репозиторием). Если такого каталога нет
-локально — спросить владельца, не создавать секреты с нуля.
-
----
-
-## 5. Куда писать отчёт о проделанной работе
-
-**Не в этот репозиторий.** Как и для всех репозиториев системы AxiOm, отчёт о
-сделанном (что изменилось, почему, где именно код) коммитится в приватный
-журнал `AxiOm_Architecture` (`MARZNESHIN_STATE.md` или профильный `*.md`) —
-см. `AGENTS_REPO_POLICY.md` §4 и его же `ONBOARDING.md` за общей картой системы
-(серверы, SSH-доступ, остальные репозитории).
+1. **Секреты — никогда в git**, даже в приватный: ключ подписи, пароли,
+   `DEVICE_API_KEY`, токены, а также пути к файлам с ними. Они в `.gitignore` —
+   проверяйте `git status` перед коммитом.
+2. **В публичный репозиторий — только выборочно**, никогда merge;
+   перед публикацией — `scripts/check_public_tree.sh` ([PUBLISHING.md](PUBLISHING.md)).
+3. **Релиз — только скриптами и с `verify_apk.py`** ([BUILD_AND_RELEASE.md §9](BUILD_AND_RELEASE.md#9-релиз-шаг-за-шагом)).
+4. **Подписывать только ключом AxiOm.** Другой ключ = пользователи не смогут
+   обновиться.
+5. **Не переименовывать то, что видит сервер:** User-Agent, вкладку Telemost,
+   `features.telemost`, схему `axiom://` — без согласования с владельцем
+   ([REBRANDING.md §3](REBRANDING.md)).
+6. **`AppId` в `AxiOm.iss` и `applicationId` Android не менять никогда.**
 
 ---
 
-## 6. Первые пять минут в задаче — чеклист
+## 7. Документы
 
-1. `git status -sb` и `git remote -v` в **текущем** worktree — не путать, откуда
-   ведётся работа (§2 выше).
-2. Задача про WBStream/Telemost, ключи, подпись → трогать только в `dev`-дереве,
-   не думать о публичном репозитории вообще, пока явно не попросят релиз.
-3. Задача про обычный UI/фичу без отношения к обходу → перед `git push origin`
-   свериться с 🔴/🟢 списком в §2.
-4. После работы — коммит в этом репозитории (в `dev`, guard сам не даст уйти в
-   `origin` бесаргументным пушем) + отчёт в `AxiOm_Architecture` (§5).
-5. Секреты — никогда в коммит, даже путь к keystore/ключу — см. §4.
-
----
-
-Связано: `AGENTS_REPO_POLICY.md` и `ONBOARDING.md` в `AxiOm_Architecture`,
-`WBSTREAM_SYSTEM.md` §5.0 (граница Telemost/WBStream в деталях), README.md
-этого репозитория (сборка, highlights).
+| Документ | О чём |
+|---|---|
+| [BUILD_AND_RELEASE.md](BUILD_AND_RELEASE.md) | окружение, сборка Android/Windows, relay, ядро, релиз, грабли |
+| [PUBLISHING.md](PUBLISHING.md) | публичный/приватный: что куда можно, как переносить |
+| [RELEASE_NOTES_FORMAT.md](RELEASE_NOTES_FORMAT.md) | как писать описание релиза |
+| [COMMIT_FORMAT.md](COMMIT_FORMAT.md) | как писать коммит |
+| [REBRANDING.md](REBRANDING.md) | что переименовано от Hiddify и почему, связь с правилами панели |
+| [windows-setup-update.md](windows-setup-update.md) | Windows: установщик, автообновление, права администратора |
+| [in-app-payment.md](in-app-payment.md) | оплата и кабинет во вкладке «Профили» |

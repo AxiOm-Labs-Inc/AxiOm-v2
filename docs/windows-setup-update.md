@@ -22,32 +22,14 @@
 - `windows/packaging/exe/make_config.yaml`
 - `windows/packaging/exe/inno_setup.sas` — kill `AxiOm.exe`, не `hiddify.exe`; не ставить `skipifsilent` на postinstall Run
 
-## Сборка релизного Setup
+## Сборка и публикация
 
-Требования: Flutter Windows desktop, **VS Community с ATL** (не только BuildTools), NuGet CLI, Inno Setup 6, `hiddify-core/bin`.
+Собирается одной командой — `scripts/build_windows.ps1`, установщик один на все
+версии — `windows/packaging/exe/AxiOm.iss`. Требования, команды и публикация
+(GitHub Release + `appcast.xml`) — [BUILD_AND_RELEASE.md §5 и §9](BUILD_AND_RELEASE.md#5-сборка-windows).
 
-```powershell
-# VsDevShell Community + PATH: nuget, ISCC, fastforge (опционально)
-$env:INNO_SETUP_PATH = "$env:LOCALAPPDATA\Programs\Inno Setup 6"  # если ISCC не в Program Files (x86)
-
-flutter build windows --release -t lib/main_prod.dart --dart-define=DEVICE_API_KEY=<ключ>
-
-# Вариант A: fastforge
-fastforge package --platform windows --targets exe --skip-clean `
-  --build-target=lib/main_prod.dart --build-dart-define=DEVICE_API_KEY=<ключ>
-
-# Вариант B: ISCC вручную по Release/
-# Source = build\windows\x64\runner\Release\*
-# OutputBaseFilename = AxiOm-vX.Y.Z-Setup
-```
-
-Имя ассета в релизе: **`AxiOm-vX.Y.Z-Setup.exe`**.
-
-## Публикация
-
-1. `gh release upload vX.Y.Z AxiOm-vX.Y.Z-Setup.exe -R AxiOm-Labs-Inc/AxiOm-v2`
-2. В публичном `appcast.xml` — item Windows с этим URL; закоммитить в `master` публичного `AxiOm-v2`.
-3. Без шага 2 плашка у клиентов не появится (см. DEVELOPMENT.md §6).
+Имя ассета в релизе: **`AxiOm-vX.Y.Z-Setup.exe`**. Без элемента в публичном
+`appcast.xml` плашка обновления у клиентов не появится.
 
 ## Замечания
 

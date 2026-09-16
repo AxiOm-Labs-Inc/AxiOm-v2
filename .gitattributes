@@ -1,0 +1,3 @@
+# Скрипты bash ломаются на CRLF («: command not found») — держим LF в любом клоне
+*.sh text eol=lf
+*.py text eol=lf

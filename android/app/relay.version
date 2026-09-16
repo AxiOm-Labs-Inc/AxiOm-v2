@@ -1,0 +1,8 @@
+# Из чего собраны android/app/src/main/jniLibs/*/librelay.so.
+# Обновлять вместе с самими .so — иначе не понять, свежий ли relay в сборке.
+# Как пересобрать — docs/BUILD_AND_RELEASE.md, раздел «librelay.so».
+repo=AxiOm-Labs-Inc/AxiOm-relay-dev
+commit=422cdc2ca87aa4822985a07d9dca4cd7b85cbb46
+built=2026-09-11
+sha256.arm64-v8a=b8890aa50574bff34dd16fe80d0490f42b1d8c37b1e654ad21f88b467eb06777
+sha256.armeabi-v7a=55fc5cfa5ed1663b0d790e078cb07abab5ff2781aa78e8e56024f9ce5616fcc5

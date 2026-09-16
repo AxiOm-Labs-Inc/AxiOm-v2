@@ -1,0 +1,11 @@
+# Скопировать в android/key.properties (он в .gitignore) и заполнить.
+# Рядом, в android/app/, должен лежать сам ключ release.jks.
+# Ключ и пароли передаёт владелец проекта лично — в git их нет.
+#
+# Подписывать только этим ключом: APK с другой подписью не встанет поверх
+# установленного AxiOm, пользователям придётся удалять приложение вместе с
+# профилями. Эталон сертификата проверяет scripts/verify_apk.py.
+storePassword=
+keyPassword=
+keyAlias=axiom
+storeFile=release.jks

@@ -74,6 +74,10 @@ app.*.map.json
 # Windows Self-Signed for msix
 windows/sign.pfx
 windows/sign.cer
-# Native core libs (fetched/built externally) and local build artifacts
-android/app/src/main/jniLibs/
+# librelay.so лежит в git (репозиторий приватный); копии и бэкапы — нет
+android/app/src/main/jniLibs/**/*.bak*
 /*.zip
+# Готовые сборки и локальные секреты сборки
+/*.apk
+/*.exe
+.env
