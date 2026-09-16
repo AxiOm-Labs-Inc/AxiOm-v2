@@ -198,6 +198,11 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -SkipGen
 - Старые `AxiOm-v4.4.x.iss` … `AxiOm-v4.5.1.iss` — история, для сборки не нужны.
 - Права администратора, режим VPN, тихое обновление — `docs/windows-setup-update.md`.
 
+- **Setup.exe не подписан** (сертификата подписи кода у нас нет). При скачивании
+  браузером и первом запуске Windows SmartScreen показывает «Неизвестный издатель» —
+  это ожидаемо, пользователь жмёт «Подробнее → Выполнить в любом случае».
+  Обновление из приложения идёт без этого окна.
+
 Проверить установщик руками: поставить поверх предыдущей версии → приложение
 запускается, профили на месте, в «О программе» новая версия.
 
@@ -221,11 +226,15 @@ powershell -ExecutionPolicy Bypass -File scripts\build_windows.ps1 -SkipGen
 
 ### Как пересобрать
 
-Нужен Go **1.26.1** (`relay/go.mod`) и доступ к `AxiOm-Labs-Inc/AxiOm-relay-dev`.
+Нужен Go версии из `relay/go.mod` (1.26.x, https://go.dev/dl/; C-компилятор и NDK
+не нужны) и доступ к `AxiOm-Labs-Inc/AxiOm-relay-dev`. Устройство самого
+relay-репозитория, что в нём нельзя ломать и как собрать держатель для серверов —
+его `docs/ONBOARDING.md`.
 
 ```bash
 git clone https://github.com/AxiOm-Labs-Inc/AxiOm-relay-dev.git
 cd AxiOm-relay-dev/relay
+go test ./tmauth ./axiomtm
 APP=/путь/к/этому/репозиторию
 
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
@@ -236,6 +245,11 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 \
   go build -trimpath -ldflags="-s -w" \
   -o "$APP/android/app/src/main/jniLibs/armeabi-v7a/librelay.so" .
 ```
+
+**Сборка воспроизводимая:** один и тот же коммит relay даёт одинаковые байты
+(16.09.2026 Go 1.26.7 пересобрал `.so`, совпавшие с лежащими в git). Так можно
+проверить, что `.so` в репозитории собраны именно из коммита в `relay.version`:
+собрать из него и сравнить `sha256sum`.
 
 Затем в этом репозитории:
 
@@ -284,7 +298,14 @@ dart run build_runner watch --delete-conflicting-outputs   # или в фоне 
 
 flutter run -t lib/main.dart --dart-define=DEVICE_API_KEY=<ключ>    # dev-окружение, подробные логи
 flutter analyze lib/features lib/core                                # 0 ошибок перед коммитом
+flutter test test/features                                           # юнит-тесты (разбор серверов, подписки)
 ```
+
+- Выпускаем только **Android и Windows**. Каталоги `ios/`, `macos/`, `linux/` и цели
+  Makefile под них — наследие апстрима, не собираются и не проверяются.
+- Все внешние адреса приложения — в `lib/core/model/constants.dart`: API кабинета
+  (`accountApiBaseUrl`), GitHub Releases и `appcast.xml` публичного репозитория,
+  боты поддержки и покупки.
 
 - `lib/main.dart` — dev (подробные логи, падает на ошибках миграции — удобно
   ловить баги). `lib/main_prod.dart` — то, что получают пользователи.
