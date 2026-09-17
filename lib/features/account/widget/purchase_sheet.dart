@@ -591,6 +591,11 @@ class PurchaseSheet extends HookConsumerWidget with PresLogger {
                   decoration: InputDecoration(
                     labelText: 'Промокод',
                     hintText: 'Введите до оплаты',
+                    // Код друга тоже вводится сюда; его бонус сервер
+                    // начисляет только после привязки покупки к Telegram.
+                    helperText: 'Код друга тоже сюда. Его бонус начислится, '
+                        'когда покупка будет привязана к Telegram',
+                    helperMaxLines: 2,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     isDense: true,
                     prefixIcon: const Icon(Icons.local_offer_outlined, size: 20),
