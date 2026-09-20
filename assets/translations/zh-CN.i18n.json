@@ -1,4 +1,4 @@
-{
+﻿{
   "common": {
     "appTitle": "AxiOm",
     "start": "开始",
@@ -272,8 +272,6 @@
           }
         },
         "region": "地区",
-        "newRouting": "Smart RU routing",
-        "newRoutingMsg": "Russian sites bypass the VPN (home IP). Turn off if something broke after the update.",
         "regions": {
           "ir": "伊朗 (ir)",
           "cn": "中国 (cn)",
@@ -291,6 +289,8 @@
           "stickySession": "Sticky session"
         },
         "blockAds": "拦截广告",
+        "newRouting": "Smart RU routing",
+        "newRoutingMsg": "Russian sites bypass the VPN (home IP). Needs AxiOm core; turn off if connect fails.",
         "bypassLan": "绕过局域网",
         "resolveDestination": "解析目的地",
         "ipv6Route": "IPv6 路由",

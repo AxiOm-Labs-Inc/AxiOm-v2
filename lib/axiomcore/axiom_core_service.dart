@@ -42,6 +42,9 @@ class AxiomCoreService with InfraLogger {
   final Map<String, StreamSubscription?> subscriptions = {};
   List<OutboundGroup> latest = [];
 
+  /// Тег группы, из которой построен селектор серверов. См. [watchGroup].
+  String? _selectorGroupTag;
+
   Future<void> init() async {
     await setup()
         .mapLeft((e) {
@@ -151,6 +154,8 @@ class AxiomCoreService with InfraLogger {
     return TaskEither(() async {
       statusController.add(currentState = const CoreStatus.starting());
       loggy.debug("starting");
+      // Новый профиль — новые группы, прежний выбор селектора больше не значим.
+      _selectorGroupTag = null;
       final background = await core.setupBackground(path, name);
       if (background != const CoreStatus.started()) {
         statusController.add(currentState = const CoreStatus.stopped());
@@ -303,15 +308,26 @@ class AxiomCoreService with InfraLogger {
     try {
       yield* core.bgClient.outboundsInfo(Empty()).map((event) {
         if (event.items.isEmpty) return null;
-        // Pick the group with the most selectable (non-group) items — the real
-        // server selector. When WARP/detour is enabled the core adds extra
-        // groups and the first one may not be the server list, which would
-        // otherwise show an empty selector.
-        return event.items.reduce((a, b) {
+        // Группа селектора выбирается один раз и дальше держится по тегу: ядро
+        // шлёт обновления часто, и если каждый раз брать «самую большую», то на
+        // одном кадре побеждает соседняя группа (WARP/цепочка ShadowTLS) — в
+        // выпадашке пропадают страны и протоколы, через секунду возвращаются.
+        if (_selectorGroupTag != null) {
+          for (final group in event.items) {
+            if (group.tag != _selectorGroupTag) continue;
+            if (group.items.any((i) => !i.isGroup)) return group;
+            break;
+          }
+        }
+        // Первый раз (или прежняя группа исчезла) — самая «населённая»: при
+        // WARP/detour первая группа может оказаться не списком серверов.
+        final picked = event.items.reduce((a, b) {
           final ai = a.items.where((i) => !i.isGroup).length;
           final bi = b.items.where((i) => !i.isGroup).length;
           return bi > ai ? b : a;
         });
+        _selectorGroupTag = picked.tag;
+        return picked;
       });
     } catch (e) {
       loggy.error("error watching group: $e");

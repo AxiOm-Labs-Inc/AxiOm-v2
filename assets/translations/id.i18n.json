@@ -1,4 +1,4 @@
-{
+﻿{
   "common": {
     "appTitle": "AxiOm",
     "start": "Mulai",
@@ -272,8 +272,6 @@
           }
         },
         "region": "Wilayah",
-        "newRouting": "Smart RU routing",
-        "newRoutingMsg": "Russian sites bypass the VPN (home IP). Turn off if something broke after the update.",
         "regions": {
           "ir": "Iran (ir)",
           "cn": "Tiongkok (cn)",
@@ -291,6 +289,8 @@
           "stickySession": "Sticky session"
         },
         "blockAds": "Blokir iklan",
+        "newRouting": "Smart RU routing",
+        "newRoutingMsg": "Russian sites bypass the VPN (home IP). Needs AxiOm core; turn off if connect fails.",
         "bypassLan": "Lewati LAN",
         "resolveDestination": "Resolusi tujuan",
         "ipv6Route": "Rute IPv6",

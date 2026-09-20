@@ -47,9 +47,9 @@ abstract class ConfigOptions {
     mapTo: (value) => value.name,
   );
 
-  // При новой маршрутизации IP-правила (geoip-ru) нужны для доменных коннектов —
-  // без resolve адрес ещё неизвестен. Дефолт true; старые установки дотягивает prefs v8.
-  static final resolveDestination = PreferencesNotifier.create<bool, bool>("resolve-destination", true);
+  // В текущем ядре флаг почти no-op (разбор закомментирован). Держим false как в 4.6.1 —
+  // принудительный true через prefs v8 дал регрессию коннекта на пробной сборке.
+  static final resolveDestination = PreferencesNotifier.create<bool, bool>("resolve-destination", false);
 
   // У нод FR и NL нет глобального IPv6: клиентские соединения на IPv6-адреса принимаются
   // ядром и тут же рвутся, приложение повторяет — рвутся Telegram, YouTube, WhatsApp.
@@ -121,9 +121,9 @@ abstract class ConfigOptions {
     validator: (value) => value.isNotBlank,
   );
 
-  /// Новая схема маршрутизации РФ (доп. доменные bypass-правила, resolve-destination).
-  /// Выключить = локальный kill-switch без переустановки. Dual-DNS — после форка ядра.
-  static final newRoutingEnabled = PreferencesNotifier.create<bool, bool>("new-routing-enabled", true);
+  /// Умная маршрутизация РФ: доп. доменные bypass-правила (.su/.рф + список сервисов).
+  /// Нужно своё ядро с ConfigRule. На стоковом AAR — только ломает коннект; дефолт off.
+  static final newRoutingEnabled = PreferencesNotifier.create<bool, bool>("new-routing-enabled", false);
 
   // При `auto` ядро отдаёт `dns-direct` стратегию `prefer_ipv4` — AAAA для direct-доменов
   // (.ru при region=ru) всё равно уходят на системный резолвер и висят до таймаута на
@@ -415,9 +415,7 @@ abstract class ConfigOptions {
   static final singboxConfigOptions = Provider<SingboxConfigOption>((ref) {
     final rules = <SingboxRule>[];
     if (ref.watch(newRoutingEnabled)) {
-      // Ядро при region=ru уже кладёт .ru + geoip-ru/geosite-ru. Здесь — суффиксы
-      // .su/.рф и явный список RU-сервисов на зарубежных доменах (vk.com и т.п.).
-      // Локальный список префиксов RIPE появится в форке ядра (см. docs/NEW_ROUTING_DNS.md).
+      // Своё ядро: ConfigRule принимает строку domains. Стоковое AAR — не включать.
       rules.add(
         const SingboxRule(
           domains: ruDirectDomainRule,

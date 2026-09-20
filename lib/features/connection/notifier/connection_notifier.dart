@@ -177,22 +177,30 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     ref.read(appStatsProvider).connectStarted();
 
     // Refresh subscription before connecting for remote profiles.
+    // Таймаут обязателен: иначе при сбое HTTP тост «Обновление подписки…» висит
+    // минутами, а коннект не начинается (разбор регрессии test-ru-routing).
     if (initialProfile is RemoteProfileEntity) {
       final notif = ref.read(inAppNotificationControllerProvider);
       notif.showLoadingToast('Обновление подписки...');
-      await ref
-          .read(profileRepositoryProvider)
-          .requireValue
-          .upsertRemote(initialProfile.url)
-          .mapLeft((l) {
-            loggy.debug("subscription refresh failed [$l]");
-            notif.showErrorToast('Ошибка обновления подписки');
-          })
-          .map((_) {
-            loggy.debug("subscription refreshed successfully");
-            notif.showSuccessToast('Подписка обновлена');
-          })
-          .run();
+      try {
+        await ref
+            .read(profileRepositoryProvider)
+            .requireValue
+            .upsertRemote(initialProfile.url)
+            .mapLeft((l) {
+              loggy.debug("subscription refresh failed [$l]");
+              notif.showErrorToast('Ошибка обновления подписки');
+            })
+            .map((_) {
+              loggy.debug("subscription refreshed successfully");
+              notif.showSuccessToast('Подписка обновлена');
+            })
+            .run()
+            .timeout(const Duration(seconds: 20));
+      } on TimeoutException {
+        loggy.warning("subscription refresh timed out after 20s, connecting with cached profile");
+        notif.showErrorToast('Обновление подписки: таймаут');
+      }
     }
 
     // Re-fetch — subscription may have been updated by the refresh above.

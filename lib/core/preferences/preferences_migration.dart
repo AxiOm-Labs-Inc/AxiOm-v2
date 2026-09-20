@@ -22,6 +22,7 @@ class PreferencesMigration with InfraLogger {
       PreferencesVersion6Migration(sharedPreferences),
       PreferencesVersion7Migration(sharedPreferences),
       PreferencesVersion8Migration(sharedPreferences),
+      PreferencesVersion9Migration(sharedPreferences),
     ];
 
     if (currentVersion == migrationSteps.length) {
@@ -281,9 +282,7 @@ class PreferencesVersion7Migration extends PreferencesMigrationStep with InfraLo
   }
 }
 
-/// Регион всегда `ru` (рынок РФ); `resolve-destination` включён — иначе IP-правила
-/// ядра (geoip-ru) не видят адрес доменного соединения. Новая маршрутизация по
-/// умолчанию on (`new-routing-enabled` отсутствует → дефолт true в ConfigOptions).
+/// Регион всегда `ru` (рынок РФ).
 class PreferencesVersion8Migration extends PreferencesMigrationStep with InfraLogger {
   PreferencesVersion8Migration(super.sharedPreferences);
 
@@ -294,11 +293,25 @@ class PreferencesVersion8Migration extends PreferencesMigrationStep with InfraLo
       loggy.debug("changing [region] from [$region] to [ru]");
       await sharedPreferences.setString("region", "ru");
     }
+  }
+}
 
+/// Откат опасных дефолтов v8 (resolve-destination=true / new-routing on) —
+/// на пробной сборке ломали коннект относительно 4.6.1. Новая схема — opt-in.
+class PreferencesVersion9Migration extends PreferencesMigrationStep with InfraLogger {
+  PreferencesVersion9Migration(super.sharedPreferences);
+
+  @override
+  Future<void> migrate() async {
     final resolve = sharedPreferences.getBool("resolve-destination");
-    if (resolve != true) {
-      loggy.debug("changing [resolve-destination] from [$resolve] to [true]");
-      await sharedPreferences.setBool("resolve-destination", true);
+    if (resolve == true) {
+      loggy.debug("changing [resolve-destination] from [true] to [false]");
+      await sharedPreferences.setBool("resolve-destination", false);
+    }
+    final routing = sharedPreferences.getBool("new-routing-enabled");
+    if (routing == true) {
+      loggy.debug("changing [new-routing-enabled] from [true] to [false]");
+      await sharedPreferences.setBool("new-routing-enabled", false);
     }
   }
 }

@@ -76,8 +76,10 @@ class ServerOption {
     final options = <ServerOption>[];
     for (final item in group.items) {
       if (item.isGroup) continue;
+      // На части обновлений ядро отдаёт пустой tagDisplay — без фолбэка запись
+      // не парсится и страна/протокол пропадают из селектора до следующего кадра.
       final parsed = tryParseDisplay(
-        item.tagDisplay,
+        item.tagDisplay.isEmpty ? item.tag : item.tagDisplay,
         rawTag: item.tag,
         delay: item.urlTestDelay,
       );

@@ -1,4 +1,4 @@
-{
+﻿{
   "common": {
     "appTitle": "AxiOm",
     "start": "ابدأ",
@@ -278,8 +278,6 @@
           }
         },
         "region": "المنطقة",
-        "newRouting": "Smart RU routing",
-        "newRoutingMsg": "Russian sites bypass the VPN (home IP). Turn off if something broke after the update.",
         "regions": {
           "ir": "إيران (ir)",
           "cn": "الصين (cn)",
@@ -297,6 +295,8 @@
           "stickySession": "Sticky session"
         },
         "blockAds": "حظر الإعلانات",
+        "newRouting": "Smart RU routing",
+        "newRoutingMsg": "Russian sites bypass the VPN (home IP). Needs AxiOm core; turn off if connect fails.",
         "bypassLan": "تجاوز الشبكة المحلية",
         "resolveDestination": "تحديد وجهة الاتصال",
         "ipv6Route": "توجيه IPv6",
