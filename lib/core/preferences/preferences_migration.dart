@@ -21,6 +21,7 @@ class PreferencesMigration with InfraLogger {
       PreferencesVersion5Migration(sharedPreferences),
       PreferencesVersion6Migration(sharedPreferences),
       PreferencesVersion7Migration(sharedPreferences),
+      PreferencesVersion8Migration(sharedPreferences),
     ];
 
     if (currentVersion == migrationSteps.length) {
@@ -276,6 +277,28 @@ class PreferencesVersion7Migration extends PreferencesMigrationStep with InfraLo
       if (current == null || current != oldDefault) continue;
       loggy.debug("changing [${entry.key}] from [$current] to [$newDefault]");
       await sharedPreferences.setInt(entry.key, newDefault);
+    }
+  }
+}
+
+/// Регион всегда `ru` (рынок РФ); `resolve-destination` включён — иначе IP-правила
+/// ядра (geoip-ru) не видят адрес доменного соединения. Новая маршрутизация по
+/// умолчанию on (`new-routing-enabled` отсутствует → дефолт true в ConfigOptions).
+class PreferencesVersion8Migration extends PreferencesMigrationStep with InfraLogger {
+  PreferencesVersion8Migration(super.sharedPreferences);
+
+  @override
+  Future<void> migrate() async {
+    final region = sharedPreferences.getString("region");
+    if (region != "ru") {
+      loggy.debug("changing [region] from [$region] to [ru]");
+      await sharedPreferences.setString("region", "ru");
+    }
+
+    final resolve = sharedPreferences.getBool("resolve-destination");
+    if (resolve != true) {
+      loggy.debug("changing [resolve-destination] from [$resolve] to [true]");
+      await sharedPreferences.setBool("resolve-destination", true);
     }
   }
 }

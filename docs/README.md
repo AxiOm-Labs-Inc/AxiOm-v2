@@ -12,5 +12,6 @@
 | [REBRANDING.md](REBRANDING.md) | отличия от Hiddify: имена, порты, User-Agent и правила панели |
 | [windows-setup-update.md](windows-setup-update.md) | Windows: Setup.exe, автообновление, права администратора |
 | [in-app-payment.md](in-app-payment.md) | Оплата и ЛК во вкладке Профили: способы оплаты, промокод, WebView/СБП, висящий платёж, тариф/дни/трафик |
+| [NEW_ROUTING_DNS.md](NEW_ROUTING_DNS.md) | Новая маршрутизация РФ и DNS: план, этапы, kill-switch, что ждёт форка ядра |
 
 Полноценная история платежей и отдельный экран ЛК — по-прежнему вне scope; кабинет живёт во вкладке Профили.

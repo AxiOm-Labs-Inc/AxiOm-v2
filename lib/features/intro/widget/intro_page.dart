@@ -14,7 +14,6 @@ import 'package:axiom/core/model/region.dart';
 import 'package:axiom/core/preferences/general_preferences.dart';
 import 'package:axiom/features/common/general_pref_tiles.dart';
 import 'package:axiom/features/settings/data/config_option_repository.dart';
-import 'package:axiom/features/settings/widget/preference_tile.dart';
 import 'package:axiom/gen/assets.gen.dart';
 import 'package:axiom/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -94,18 +93,6 @@ class IntroPage extends HookConsumerWidget with PresLogger {
                   ),
                   const Gap(24),
                   const LocalePrefTile(),
-                  ChoicePreferenceWidget(
-                    selected: ref.watch(ConfigOptions.region),
-                    preferences: ref.watch(ConfigOptions.region.notifier),
-                    choices: Region.values,
-                    title: t.pages.settings.routing.region,
-                    showFlag: true,
-                    icon: Icons.place_rounded,
-                    presentChoice: (value) => value.present(t),
-                    onChanged: (val) async {
-                      await ref.read(ConfigOptions.directDnsAddress.notifier).reset();
-                    },
-                  ),
                   const Gap(24),
                   Focus(
                     focusNode: focusNodes[IntroConst.termsAndConditionsKey],
@@ -183,13 +170,18 @@ class IntroPage extends HookConsumerWidget with PresLogger {
   }
 
   Future<void> autoSelectRegion(WidgetRef ref) async {
+    // Регион маршрутизации всегда ru (рынок РФ). Здесь подбираем только язык UI.
+    Future<void> applyLocale(AppLocale locale) async {
+      await ref.read(ConfigOptions.region.notifier).update(Region.ru);
+      await ref.watch(ConfigOptions.directDnsAddress.notifier).reset();
+      await ref.read(localePreferencesProvider.notifier).changeLocale(locale);
+    }
+
     try {
       final countryCode = RegionDetector.detect();
       final regionLocale = _getRegionLocale(countryCode);
-      loggy.debug('Timezone Region: ${regionLocale.region} Locale: ${regionLocale.locale}');
-      await ref.read(ConfigOptions.region.notifier).update(regionLocale.region);
-      await ref.watch(ConfigOptions.directDnsAddress.notifier).reset();
-      await ref.read(localePreferencesProvider.notifier).changeLocale(regionLocale.locale);
+      loggy.debug('Timezone Region: ${regionLocale.region} Locale: ${regionLocale.locale} (routing fixed to ru)');
+      await applyLocale(regionLocale.locale);
       return;
     } catch (e) {
       loggy.warning('Could not get the local country code based on timezone', e);
@@ -207,14 +199,15 @@ class IntroPage extends HookConsumerWidget with PresLogger {
         final jsonData = response.data!;
         final regionLocale = _getRegionLocale(jsonData['country_code']?.toString() ?? "");
 
-        loggy.debug('Region: ${regionLocale.region} Locale: ${regionLocale.locale}');
-        await ref.read(ConfigOptions.region.notifier).update(regionLocale.region);
-        await ref.read(localePreferencesProvider.notifier).changeLocale(regionLocale.locale);
+        loggy.debug('Region: ${regionLocale.region} Locale: ${regionLocale.locale} (routing fixed to ru)');
+        await applyLocale(regionLocale.locale);
       } else {
         loggy.warning('Request failed with status: ${response.statusCode}');
+        await applyLocale(AppLocale.ru);
       }
     } catch (e) {
       loggy.warning('Could not get the local country code from ip');
+      await applyLocale(AppLocale.ru);
     }
   }
 

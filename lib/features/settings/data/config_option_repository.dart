@@ -8,6 +8,7 @@ import 'package:axiom/core/utils/json_converters.dart';
 import 'package:axiom/core/utils/preferences_utils.dart';
 import 'package:axiom/features/log/model/log_level.dart';
 import 'package:axiom/features/profile/data/profile_parser.dart';
+import 'package:axiom/features/routing/ru_direct_domains.dart';
 import 'package:axiom/features/settings/model/config_option_failure.dart';
 import 'package:axiom/singbox/model/singbox_config_enum.dart';
 import 'package:axiom/singbox/model/singbox_config_option.dart';
@@ -46,7 +47,9 @@ abstract class ConfigOptions {
     mapTo: (value) => value.name,
   );
 
-  static final resolveDestination = PreferencesNotifier.create<bool, bool>("resolve-destination", false);
+  // При новой маршрутизации IP-правила (geoip-ru) нужны для доменных коннектов —
+  // без resolve адрес ещё неизвестен. Дефолт true; старые установки дотягивает prefs v8.
+  static final resolveDestination = PreferencesNotifier.create<bool, bool>("resolve-destination", true);
 
   // У нод FR и NL нет глобального IPv6: клиентские соединения на IPv6-адреса принимаются
   // ядром и тут же рвутся, приложение повторяет — рвутся Telegram, YouTube, WhatsApp.
@@ -64,14 +67,18 @@ abstract class ConfigOptions {
     "tcp://8.8.8.8",
     possibleValues: List.of([
       "local",
-      // "udp://223.5.5.5",
-      // "udp://1.1.1.1",
-      // "udp://1.1.1.2",
       "tcp://8.8.8.8",
+      "tcp://8.8.4.4",
       "tcp://1.1.1.1",
+      "tcp://1.0.0.1",
       "https://1.1.1.1/dns-query",
       "https://dns.cloudflare.com/dns-query",
+      "https://dns.google/dns-query",
+      "tcp://4.2.2.1",
+      "tcp://4.2.2.2",
       "tcp://4.4.2.2",
+      "tcp://77.88.8.8",
+      "tcp://77.88.8.1",
     ]),
     validator: (value) => value.isNotBlank,
   );
@@ -88,15 +95,18 @@ abstract class ConfigOptions {
     "local",
     possibleValues: List.of([
       "local",
-      "udp://223.5.5.5",
-      "udp://1.1.1.1",
-      "udp://1.1.1.2",
-      "tcp://1.1.1.1",
-      "https://1.1.1.1/dns-query",
-      "https://dns.cloudflare.com/dns-query",
       "udp://77.88.8.8",
+      "udp://77.88.8.1",
+      "tcp://77.88.8.8",
+      "tcp://77.88.8.1",
+      "udp://1.1.1.1",
+      "tcp://1.1.1.1",
+      "tcp://8.8.8.8",
+      "tcp://4.2.2.1",
+      "tcp://4.2.2.2",
       "4.4.2.2",
       "8.8.8.8",
+      // DoH в списке намеренно нет: ядро гонит его через direct-fragment и ломает TLS.
     ]),
     // Direct-трафик (.ru при region=ru) резолвится этим сервером мимо туннеля.
     // plain-UDP к 1.1.1.1 / 77.88.8.8 при включённом VPN часто не доходит или не
@@ -110,6 +120,10 @@ abstract class ConfigOptions {
     },
     validator: (value) => value.isNotBlank,
   );
+
+  /// Новая схема маршрутизации РФ (доп. доменные bypass-правила, resolve-destination).
+  /// Выключить = локальный kill-switch без переустановки. Dual-DNS — после форка ядра.
+  static final newRoutingEnabled = PreferencesNotifier.create<bool, bool>("new-routing-enabled", true);
 
   // При `auto` ядро отдаёт `dns-direct` стратегию `prefer_ipv4` — AAAA для direct-доменов
   // (.ru при region=ru) всё равно уходят на системный резолвер и висят до таймаута на
@@ -344,6 +358,7 @@ abstract class ConfigOptions {
     "service-mode": serviceMode,
     "log-level": logLevel,
     "resolve-destination": resolveDestination,
+    "new-routing-enabled": newRoutingEnabled,
     "ipv6-mode": ipv6Mode,
     "remote-dns-address": remoteDnsAddress,
     "remote-dns-domain-strategy": remoteDnsDomainStrategy,
@@ -398,46 +413,18 @@ abstract class ConfigOptions {
   };
 
   static final singboxConfigOptions = Provider<SingboxConfigOption>((ref) {
-    // final region = ref.watch(Preferences.region);
     final rules = <SingboxRule>[];
-    // final rules = switch (region) {
-    //   Region.ir => [
-    //       const SingboxRule(
-    //         domains: "domain:.ir,geosite:ir",
-    //         ip: "geoip:ir",
-    //         outbound: RuleOutbound.bypass,
-    //       ),
-    //     ],
-    //   Region.cn => [
-    //       const SingboxRule(
-    //         domains: "domain:.cn,geosite:cn",
-    //         ip: "geoip:cn",
-    //         outbound: RuleOutbound.bypass,
-    //       ),
-    //     ],
-    //   Region.ru => [
-    //       const SingboxRule(
-    //         domains: "domain:.ru",
-    //         ip: "geoip:ru",
-    //         outbound: RuleOutbound.bypass,
-    //       ),
-    //     ],
-    //   Region.af => [
-    //       const SingboxRule(
-    //         domains: "domain:.af,geosite:af",
-    //         ip: "geoip:af",
-    //         outbound: RuleOutbound.bypass,
-    //       ),
-    //     ],
-    //   Region.id => [
-    //       const SingboxRule(
-    //         domains: "domain:.id,geosite:id",
-    //         ip: "geoip:id",
-    //         outbound: RuleOutbound.bypass,
-    //       ),
-    //     ],
-    //   _ => <SingboxRule>[],
-    // };
+    if (ref.watch(newRoutingEnabled)) {
+      // Ядро при region=ru уже кладёт .ru + geoip-ru/geosite-ru. Здесь — суффиксы
+      // .su/.рф и явный список RU-сервисов на зарубежных доменах (vk.com и т.п.).
+      // Локальный список префиксов RIPE появится в форке ядра (см. docs/NEW_ROUTING_DNS.md).
+      rules.add(
+        const SingboxRule(
+          domains: ruDirectDomainRule,
+          outbound: RuleOutbound.bypass,
+        ),
+      );
+    }
 
     final selectedMode = ref.watch(serviceMode);
     // Без прав администратора TUN не поднимется — ядро упадёт на создании

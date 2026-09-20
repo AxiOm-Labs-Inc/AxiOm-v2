@@ -272,6 +272,8 @@
           }
         },
         "region": "地区",
+        "newRouting": "Smart RU routing",
+        "newRoutingMsg": "Russian sites bypass the VPN (home IP). Turn off if something broke after the update.",
         "regions": {
           "ir": "伊朗 (ir)",
           "cn": "中国 (cn)",
