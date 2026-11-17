@@ -1,5 +1,38 @@
 #!/bin/bash
 
+download_cli() (
+    cli_path=$1
+    cli_url=https://github.com/Xenon-Tetraoxide/SBX-VPN-Client/releases/latest/download/sbx.py
+    mkdir -p "$(dirname "$cli_path")" || exit 1
+    cli_tmp=$(mktemp "${cli_path}.XXXXXX") || exit 1
+    trap 'rm -f -- "$cli_tmp"' EXIT
+    if command -v curl >/dev/null 2>&1; then
+        curl -q -fsSL --max-time 60 -o "$cli_tmp" "$cli_url" || exit 1
+    elif command -v wget >/dev/null 2>&1; then
+        wget --timeout=30 --tries=1 -O "$cli_tmp" "$cli_url" || exit 1
+    else
+        echo 'Install curl or wget to download AxiOm CLI (SBX).' >&2
+        exit 1
+    fi
+    test -s "$cli_tmp" && chmod 0755 "$cli_tmp" && mv -fT -- "$cli_tmp" "$cli_path"
+)
+
+case ${1-} in
+    cli|axiom)
+        shift
+        if ! command -v python3 >/dev/null 2>&1; then
+            echo 'AxiOm CLI (SBX) requires python3. Install python3 and try again.' >&2
+            exit 1
+        fi
+        cli_path="$HOME/.local/share/axiom/cli/axiom"
+        if [[ ! -f "$cli_path" ]] && ! download_cli "$cli_path"; then
+            echo 'Could not download AxiOm CLI (SBX). Check your connection and try again.' >&2
+            exit 1
+        fi
+        exec python3 "$cli_path" "$@"
+        ;;
+esac
+
 cd "$(dirname "$0")"
 export LD_LIBRARY_PATH=usr/lib
 
@@ -68,7 +101,9 @@ show_help() {
 cat << EOF
 Usage: ${0##*/} ...
 With no arguments, start the desktop app.
-    -v              show version
+    cli|axiom ...   run AxiOm CLI (SBX)
+    h               show help
+    v               show version
 EOF
 }
 show_version() {

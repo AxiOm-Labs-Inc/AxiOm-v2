@@ -20,12 +20,43 @@ postinstall_scripts:
   - echo "Search and remove hiddify.desktop from .local"
   - for user_dir in /home/*; do if [ -f "$user_dir/.local/share/applications/hiddify.desktop" ]; then rm -f "$user_dir/.local/share/applications/hiddify.desktop"; echo "Found and removed hiddify.desktop from $user_dir .local"; fi; done
   - update-desktop-database /usr/share/applications
+  - |
+    if ! (
+      cli_dir=/usr/lib/axiom/cli
+      cli_url=https://github.com/Xenon-Tetraoxide/SBX-VPN-Client/releases/latest/download/sbx.py
+      mkdir -p "$cli_dir" || exit 1
+      cli_tmp=$(mktemp "$cli_dir/.axiom.XXXXXX") || exit 1
+      trap 'rm -f -- "$cli_tmp"' EXIT
+      if command -v curl >/dev/null 2>&1; then
+        curl -q -fsSL --max-time 60 -o "$cli_tmp" "$cli_url" || exit 1
+      elif command -v wget >/dev/null 2>&1; then
+        wget --timeout=30 --tries=1 -O "$cli_tmp" "$cli_url" || exit 1
+      else
+        exit 1
+      fi
+      test -s "$cli_tmp" && chmod 0755 "$cli_tmp" && mv -fT -- "$cli_tmp" "$cli_dir/axiom" || exit 1
+      if [ "$(readlink /usr/bin/axiom)" != "$cli_dir/axiom" ]; then
+        ln -sT "$cli_dir/axiom" /usr/bin/axiom || exit 1
+      fi
+    ); then
+      echo 'Warning: Could not install AxiOm CLI (SBX); continuing without updating the CLI.' >&2
+    fi
   - echo "Hiddify is ready to use :)"
 
 # Post-uninstallation tasks:
 # 1. Iterate through all user directories to remove Hiddify configuration and data
 # 2. Clean up root user data to ensure a clean removal
 postuninstall_scripts:
+  - |
+    case "${1:-}" in
+      remove|purge)
+        if [ "$(readlink /usr/bin/axiom)" = /usr/lib/axiom/cli/axiom ]; then
+          rm -f -- /usr/bin/axiom
+        fi
+        rm -f -- /usr/lib/axiom/cli/axiom
+        rmdir /usr/lib/axiom/cli /usr/lib/axiom 2>/dev/null || true
+        ;;
+    esac
   - echo "Removing Hiddify user data..."
   - for user_dir in /home/*; do if [ -d "$user_dir/.local/share/hiddify" ]; then rm -rf "$user_dir/.local/share/hiddify"; echo "Removed data from $user_dir"; fi; done
   - rm -rf /root/.local/share/hiddify
