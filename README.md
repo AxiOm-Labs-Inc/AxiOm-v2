@@ -14,6 +14,18 @@ A multi-platform VPN client (Flutter + sing-box core).
 - **Connection timer** that survives the app process being killed in the background.
 - AxiOm branding (Ω) across app icon, splash and UI.
 
+## CLI
+
+The Windows Setup and Linux `.deb` automatically download the latest [SBX](https://github.com/Xenon-Tetraoxide/SBX-VPN-Client) release as `axiom` when installing or upgrading. On Windows, open a new terminal after installation. On Linux, the CLI requires `python3` and `sing-box`.
+
+```text
+axiom import <subscription-url>
+axiom connect
+axiom update
+```
+
+With AppImage, use `./AxiOm.AppImage cli <command>` instead; it downloads the CLI on first use. If the download fails, the desktop app is still available.
+
 ## Build
 
 Standard Flutter project. Fetch the native sing-box core libs via the

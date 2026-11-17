@@ -117,6 +117,18 @@
 
 </div>
 
+## CLI
+
+Установщик Windows и пакет `.deb` при установке и обновлении автоматически скачивают последний релиз [SBX](https://github.com/Xenon-Tetraoxide/SBX-VPN-Client) и добавляют команду `axiom`. В Windows после установки откройте новый терминал. В Linux для CLI нужны `python3` и `sing-box`.
+
+```text
+axiom import <ссылка>
+axiom connect
+axiom update
+```
+
+В AppImage используйте `./AxiOm.AppImage cli <команда>`: CLI скачается при первом запуске. Если загрузка не удалась, графическое приложение остаётся доступным.
+
 ## 🌎 Переводы
 
 Улучшайте существующие языки или добавляйте новые, вручную редактируя JSON-файлы, расположенные в `/assets/translations`, или используя [Онлайн редактор Inlang](https://fink.inlang.com/editor/github.com/hiddify/hiddify-app)
