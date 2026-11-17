@@ -33,7 +33,7 @@ body:
         - Linux
         - Android TV
         - iOS
-        - HiddifyCli (Core)
+        - AxiOm CLI (SBX)
     validations:
       required: true
   - type: input

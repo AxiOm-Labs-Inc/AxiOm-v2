@@ -67,7 +67,7 @@ EOF
 show_help() {
 cat << EOF
 Usage: ${0##*/} ...
-start Hiddify or HiddifyCli, when no parameter is given, Hiddify is executed.
+With no arguments, start the desktop app.
     -v              show version
 EOF
 }
@@ -91,10 +91,6 @@ else
 # processing arguments
 
     case $1 in
-        HiddifyCli)  
-            exec ./HiddifyCli ${@:3}
-            exit 0
-            ;;
         h)
             show_help
             exit 0
