@@ -64,7 +64,9 @@ void main() {
       "import 'dart:io';\n"
       'void main(List<String> args) {\n'
       "  if (args.isNotEmpty && args.first == 'version') stdout.writeln('sing-box version 1.13.0');\n"
-      "  if (Platform.environment['FAKE_SINGBOX_SLOW'] != null) sleep(const Duration(seconds: 3));\n"
+      "  if (args.isNotEmpty && args.first == 'check' && Platform.environment['FAKE_SINGBOX_SLOW'] != null) {\n"
+      '    sleep(const Duration(seconds: 3));\n'
+      '  }\n'
       '  exit(0);\n'
       '}\n',
     );
@@ -119,10 +121,11 @@ void main() {
     // настоящим sing-box, а на Windows ещё и скачивает его с GitHub).
     final singBox = File(Platform.isWindows ? windowsFakeSingBox! : p.join(tmp.path, 'bin', 'sing-box'));
     if (!Platform.isWindows) {
-      // FAKE_SINGBOX_SLOW: «подготовка» CLI (проверка конфига) идёт 3 с — окно для намерения «выключить».
+      // FAKE_SINGBOX_SLOW: `sing-box check` идёт 3 с — подготовка CLI (Linux: apply, Windows: конфиг задачи
+      // SYSTEM через копию этой заглушки) растягивается, и «выключить» из приложения успевает детерминированно.
       await singBox.writeAsString(
         '#!/bin/sh\n[ "\$1" = version ] && echo "sing-box version 1.13.0"\n'
-        '[ -n "\$FAKE_SINGBOX_SLOW" ] && sleep 3\nexit 0\n',
+        '[ "\$1" = check ] && [ -n "\$FAKE_SINGBOX_SLOW" ] && sleep 3\nexit 0\n',
       );
       await Process.run('chmod', ['755', singBox.path]);
     }
