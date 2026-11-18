@@ -26,6 +26,8 @@ axiom update
 
 In the AxiOm CLI, `axiom update` updates the CLI itself; update subscriptions with `axiom sub update`. Uninstalling AxiOm also removes the CLI's autostart tasks.
 
+The AxiOm CLI keeps its own data in `~/.config/axiom/cli` (Linux) / `%APPDATA%\AxiOm\cli` (Windows) and its own services/tasks (`axiom*`), so it does not interfere with a standalone SBX installation.
+
 With AppImage, use `./AxiOm.AppImage cli <command>` instead; it downloads the CLI on first use. If the download fails, the desktop app is still available.
 
 ## Build

@@ -21,9 +21,10 @@ postinstall_scripts:
   - for user_dir in /home/*; do if [ -f "$user_dir/.local/share/applications/hiddify.desktop" ]; then rm -f "$user_dir/.local/share/applications/hiddify.desktop"; echo "Found and removed hiddify.desktop from $user_dir .local"; fi; done
   - update-desktop-database /usr/share/applications
   - |
-    if ! (
-      cli_dir=/usr/lib/axiom/cli
-      cli_url=https://github.com/Xenon-Tetraoxide/SBX-VPN-Client/releases/latest/download/sbx.py
+    cli_dir=/usr/lib/axiom/cli
+    cli_url=https://github.com/Xenon-Tetraoxide/SBX-VPN-Client/releases/latest/download/sbx.py
+    cli_rc=0
+    (
       mkdir -p "$cli_dir" || exit 1
       cli_tmp=$(mktemp "$cli_dir/.axiom.XXXXXX") || exit 1
       trap 'rm -f -- "$cli_tmp"' EXIT
@@ -35,14 +36,14 @@ postinstall_scripts:
         exit 1
       fi
       test -s "$cli_tmp" && chmod 0755 "$cli_tmp" && mv -fT -- "$cli_tmp" "$cli_dir/axiom" || exit 1
-      if [ "$(readlink /usr/bin/axiom)" != "$cli_dir/axiom" ]; then
-        ln -sT "$cli_dir/axiom" /usr/bin/axiom || exit 1
-      fi
-    ); then
-      if [ -e /usr/bin/axiom ] && [ "$(readlink /usr/bin/axiom)" != /usr/lib/axiom/cli/axiom ]; then
-        echo '/usr/bin/axiom принадлежит другой программе; CLI установлен в /usr/lib/axiom/cli/axiom' >&2
-      else
-        echo 'Warning: Could not install AxiOm CLI (SBX); continuing without updating the CLI.' >&2
+    ) || cli_rc=$?
+    if [ "$cli_rc" -ne 0 ]; then
+      echo 'Warning: Could not install AxiOm CLI (SBX); continuing without updating the CLI.' >&2
+    elif [ "$(readlink /usr/bin/axiom)" != "$cli_dir/axiom" ]; then
+      if [ -e /usr/bin/axiom ] || [ -L /usr/bin/axiom ]; then
+        echo "/usr/bin/axiom принадлежит другой программе; CLI установлен в $cli_dir/axiom" >&2
+      elif ! ln -sT "$cli_dir/axiom" /usr/bin/axiom; then
+        echo "Warning: Could not create /usr/bin/axiom; CLI установлен в $cli_dir/axiom" >&2
       fi
     fi
   - echo "Hiddify is ready to use :)"
@@ -55,7 +56,21 @@ postuninstall_scripts:
     case "${1:-}" in
       remove|purge)
         if [ -x /usr/lib/axiom/cli/axiom ] && command -v python3 >/dev/null 2>&1; then
-          timeout 30 python3 /usr/lib/axiom/cli/axiom uninstall >/dev/null 2>&1 || true
+          axiom_rc=0
+          timeout 30 python3 /usr/lib/axiom/cli/axiom uninstall >/dev/null 2>&1 || axiom_rc=$?
+          if [ "$axiom_rc" -ne 0 ]; then
+            echo "Warning: 'axiom uninstall' exited with code $axiom_rc (124 = timeout); removing AxiOm CLI units directly." >&2
+          fi
+        fi
+        # Fallback: the CLI's own systemd units (never the standalone SBX sbx.* ones).
+        axiom_units=0
+        for axiom_unit in axiom.service axiom-update.service axiom-update.timer; do
+          if [ -e "/etc/systemd/system/$axiom_unit" ] || [ -L "/etc/systemd/system/$axiom_unit" ]; then
+            rm -f -- "/etc/systemd/system/$axiom_unit" && axiom_units=1
+          fi
+        done
+        if [ "$axiom_units" = 1 ] && command -v systemctl >/dev/null 2>&1; then
+          systemctl daemon-reload >/dev/null 2>&1 || true
         fi
         if [ "$(readlink /usr/bin/axiom)" = /usr/lib/axiom/cli/axiom ]; then
           rm -f -- /usr/bin/axiom

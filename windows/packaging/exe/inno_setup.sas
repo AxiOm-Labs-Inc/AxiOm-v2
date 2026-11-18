@@ -14,6 +14,8 @@ Compression=lzma
 SolidCompression=yes
 SetupIconFile={{SETUP_ICON_FILE}}
 WizardStyle=modern
+; Keep the template value: fastforge defaults it to 'none', which every released installer used,
+; so upgrades stay in the same install scope. Do not hardcode it in make_config.yaml.
 PrivilegesRequired={{PRIVILEGES_REQUIRED}}
 ChangesEnvironment=yes
 ArchitecturesAllowed=x64
@@ -74,6 +76,13 @@ const
   CliAsset = 'sbx-windows-amd64.exe';
   CliUrl = 'https://github.com/Xenon-Tetraoxide/SBX-VPN-Client/releases/latest/download/';
   MoveReplaceExisting = 1;
+  CliStateKey = 'Software\AxiOm\CLI';
+  CliStateParentKey = 'Software\AxiOm';
+  CliPathAddedValue = 'PathAdded';
+  RegTypeSz = 1;
+  RegTypeExpandSz = 2;
+  KeyQueryValue = $0001;
+  KeyWow64_64Key = $0100;
 
 var
   CliNeedsRestart, CliDownloaded: Boolean;
@@ -81,6 +90,15 @@ var
 
 function MoveFileEx(ExistingFile, NewFile: String; Flags: LongWord): Boolean;
   external 'MoveFileExW@kernel32.dll stdcall setuponly';
+
+function RegOpenKeyExW(hKey: Integer; lpSubKey: String; ulOptions, samDesired: LongWord; var phkResult: Integer): LongInt;
+  external 'RegOpenKeyExW@advapi32.dll stdcall';
+
+function RegQueryValueExW(hKey: Integer; lpValueName: String; lpReserved: LongWord; var lpType: LongWord; lpData, lpcbData: LongWord): LongInt;
+  external 'RegQueryValueExW@advapi32.dll stdcall';
+
+function RegCloseKey(hKey: Integer): LongInt;
+  external 'RegCloseKey@advapi32.dll stdcall';
 
 function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
 begin
@@ -136,11 +154,46 @@ begin
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
+function GetPathValueType(RootKey: Integer; const EnvironmentKey: String; var ValueType: LongWord): Boolean;
+var
+  KeyHandle: Integer;
+begin
+  Result := False;
+  if RegOpenKeyExW(RootKey, EnvironmentKey, 0, KeyQueryValue or KeyWow64_64Key, KeyHandle) = 0 then
+  begin
+    try
+      Result := RegQueryValueExW(KeyHandle, 'Path', 0, ValueType, 0, 0) = 0;
+    finally
+      RegCloseKey(KeyHandle);
+    end;
+  end;
+end;
+
+function WritePathValue(RootKey: Integer; const EnvironmentKey, Value: String; ValueType: LongWord): Boolean;
+begin
+  if ValueType = RegTypeSz then
+    Result := RegWriteStringValue(RootKey, EnvironmentKey, 'Path', Value)
+  else
+    Result := RegWriteExpandStringValue(RootKey, EnvironmentKey, 'Path', Value);
+end;
+
+procedure ClearCliPathMarker(RootKey: Integer);
+begin
+  RegDeleteValue(RootKey, CliStateKey, CliPathAddedValue);
+  RegDeleteKeyIfEmpty(RootKey, CliStateKey);
+  RegDeleteKeyIfEmpty(RootKey, CliStateParentKey);
+end;
+
+// AddEntry: append the cli folder to PATH, keeping the value type, and record in
+// Software\AxiOm\CLI (same root as the PATH key) that Setup added it.
+// Remove: only if that marker exists.
 function UpdateCliPath(AddEntry: Boolean): Boolean;
 var
-  CliDir, PathValue, Entry: String;
+  CliDir, PathValue, Entry, EnvironmentKey: String;
   EntryStart, EntryEnd, RootKey: Integer;
-  EnvironmentKey: String;
+  ValueType: LongWord;
+  PathExists: Boolean;
+  MarkerValue: Cardinal;
 begin
   CliDir := ExpandConstant('{app}\cli');
   if IsAdminInstallMode then
@@ -154,13 +207,33 @@ begin
     EnvironmentKey := UserEnvironmentKey;
   end;
   Result := True;
-  if not RegQueryStringValue(RootKey, EnvironmentKey, 'Path', PathValue) then
+
+  if not AddEntry then
   begin
-    if RegValueExists(RootKey, EnvironmentKey, 'Path') then
-      Result := False;
-    if not Result or not AddEntry then
+    if not RegQueryDWordValue(RootKey, CliStateKey, CliPathAddedValue, MarkerValue) or (MarkerValue <> 1) then
+    begin
+      Log('PATH entry was not added by Setup; leaving PATH untouched');
       Exit;
-    PathValue := '';
+    end;
+  end;
+
+  PathExists := RegValueExists(RootKey, EnvironmentKey, 'Path');
+  PathValue := '';
+  ValueType := RegTypeExpandSz;
+  if PathExists then
+  begin
+    if not RegQueryStringValue(RootKey, EnvironmentKey, 'Path', PathValue) or
+       not GetPathValueType(RootKey, EnvironmentKey, ValueType) or
+       ((ValueType <> RegTypeSz) and (ValueType <> RegTypeExpandSz)) then
+    begin
+      Result := False;
+      Exit;
+    end;
+  end
+  else if not AddEntry then
+  begin
+    ClearCliPathMarker(RootKey);
+    Exit;
   end;
 
   EntryStart := 1;
@@ -181,7 +254,9 @@ begin
         if (EntryEnd > Length(PathValue)) and (EntryStart > 1) then
           EntryStart := EntryStart - 1;
         Delete(PathValue, EntryStart, EntryEnd - EntryStart + 1);
-        Result := RegWriteExpandStringValue(RootKey, EnvironmentKey, 'Path', PathValue);
+        Result := WritePathValue(RootKey, EnvironmentKey, PathValue, ValueType);
+        if Result then
+          ClearCliPathMarker(RootKey);
       end;
       Exit;
     end;
@@ -192,8 +267,12 @@ begin
   begin
     if (PathValue <> '') and (Copy(PathValue, Length(PathValue), 1) <> ';') then
       PathValue := PathValue + ';';
-    Result := RegWriteExpandStringValue(RootKey, EnvironmentKey, 'Path', PathValue + CliDir);
-  end;
+    Result := WritePathValue(RootKey, EnvironmentKey, PathValue + CliDir, ValueType);
+    if Result and not RegWriteDWordValue(RootKey, CliStateKey, CliPathAddedValue, 1) then
+      Log('Could not record the PATH marker; the entry will not be removed on uninstall');
+  end
+  else
+    ClearCliPathMarker(RootKey);
 end;
 
 procedure InstallCli();
@@ -261,19 +340,45 @@ begin
   Result := CliNeedsRestart;
 end;
 
+function PsQuote(const Value: String): String;
+var
+  Escaped: String;
+begin
+  Escaped := Value;
+  StringChangeEx(Escaped, #39, #39#39, True);
+  Result := #39 + Escaped + #39;
+end;
+
+// Wrapper exit codes: 124 = timed out and killed, 125 = could not start.
 procedure RunCliUninstall();
 var
-  CliPath: String;
+  CliPath, CliArgs: String;
   ResultCode: Integer;
 begin
   CliPath := ExpandConstant('{app}\cli\axiom.exe');
   if not FileExists(CliPath) then
+  begin
+    Log('AxiOm CLI is not installed; skipping CLI cleanup');
     Exit;
-  StringChangeEx(CliPath, #39, #39#39, True);
-  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-    '-NoProfile -NonInteractive -Command "$p = Start-Process -FilePath ' + #39 + CliPath + #39 +
-    ' -ArgumentList ''uninstall'' -WindowStyle Hidden -PassThru; if (-not $p.WaitForExit(30000)) { $p.Kill() }"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+  CliArgs := PsQuote('uninstall');
+  if UninstallSilent then
+    CliArgs := PsQuote('--no-elevate') + ',' + CliArgs;
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -Command "$ErrorActionPreference = ' + PsQuote('Stop') +
+    '; try { $p = Start-Process -FilePath ' + PsQuote(CliPath) + ' -ArgumentList ' + CliArgs +
+    ' -WindowStyle Hidden -PassThru; $null = $p.Handle } catch { exit 125 }; ' +
+    'if (-not $p.WaitForExit(60000)) { try { $p.Kill() } catch { }; exit 124 }; exit $p.ExitCode"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Log('Could not launch PowerShell for AxiOm CLI cleanup: ' + SysErrorMessage(ResultCode))
+  else if ResultCode = 0 then
+    Log('AxiOm CLI cleanup finished successfully')
+  else if ResultCode = 124 then
+    Log('AxiOm CLI cleanup timed out and was stopped')
+  else if ResultCode = 125 then
+    Log('AxiOm CLI cleanup could not be started')
+  else
+    Log('AxiOm CLI cleanup failed with exit code ' + IntToStr(ResultCode) + '; uninstall continues');
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
