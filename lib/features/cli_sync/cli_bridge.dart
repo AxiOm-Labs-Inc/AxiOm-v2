@@ -29,6 +29,7 @@ import 'package:hiddify/features/proxy/active/active_proxy_notifier.dart';
 import 'package:hiddify/features/proxy/data/proxy_data_providers.dart';
 import 'package:hiddify/features/proxy/data/server_list_cache.dart';
 import 'package:hiddify/features/proxy/model/server_option.dart';
+import 'package:hiddify/features/proxy/overview/proxies_overview_notifier.dart';
 import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -82,6 +83,8 @@ class CliBridge with AppLogger {
   bool _executing = false;
   Future<CliEngineState>? _probeInFlight;
   bool _lastRunning = false;
+  bool _cliRunning = false;
+  ServerSelection? _pendingSelection;
   File? _prefsFile;
   String? _prefsStamp;
 
@@ -119,6 +122,10 @@ class CliBridge with AppLogger {
   Future<void> shutdown() async {
     _disposed = true;
     _stopTimers();
+    // Запись, начатая до выхода, не должна вернуть файл после удаления.
+    for (var i = 0; _writing && i < 50; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
     await _files?.deleteAppState();
   }
 
@@ -207,7 +214,8 @@ class CliBridge with AppLogger {
     try {
       final state = _snapshot();
       final last = _lastWritten;
-      final due = _nowMs - _lastWriteMs >= appStateHeartbeat.inMilliseconds;
+      // Опрос раз в 1 с: с запасом в полсекунды пульс выходит ровно раз в 2 с.
+      final due = _nowMs - _lastWriteMs >= appStateHeartbeat.inMilliseconds - 500;
       if (!force && !due && last != null && last.sameContent(state)) return;
       if (await files.writeAppState(state)) {
         _lastWritten = state;
@@ -262,8 +270,9 @@ class CliBridge with AppLogger {
     final prefs = _ref.read(sharedPreferencesProvider).requireValue;
     final connected = _ref.read(connectionNotifierProvider).valueOrNull is Connected;
     final repo = _ref.read(proxyRepositoryProvider);
-    OutboundGroup? group;
-    if (connected) {
+    // Список серверов ядра: из карточки выбора, если он уже загружен, иначе прямо из ядра.
+    OutboundGroup? group = connected ? _ref.read(proxiesOverviewNotifierProvider).valueOrNull : null;
+    if (connected && group == null) {
       try {
         final either = await repo.watchProxies().first.timeout(const Duration(seconds: 5));
         group = either.getOrElse((_) => null);
@@ -362,11 +371,25 @@ class CliBridge with AppLogger {
   }
 
   /// Кнопка подключения, когда работает только движок CLI: `axiom disconnect`.
-  Future<void> disconnectCliEngine() => _runCli(['disconnect']);
+  Future<void> disconnectCliEngine() async {
+    if (_cliRunning) return;
+    await _runCli(['disconnect']);
+  }
 
   /// Выбор сервера пользователем, пока работает движок CLI: `axiom use --select "C|P|T"`.
-  Future<void> useSelectionInCli(ServerSelection selection) =>
-      _runCli(['use', '--select', selection.toSelectArg()]);
+  /// Выбор, сделанный, пока идёт другая команда CLI, не теряется: уходит последний — после неё.
+  Future<void> useSelectionInCli(ServerSelection selection) async {
+    _pendingSelection = selection;
+    await _drainSelections();
+  }
+
+  Future<void> _drainSelections() async {
+    while (!_cliRunning && _pendingSelection != null) {
+      final next = _pendingSelection!;
+      _pendingSelection = null;
+      await _runCli(['use', '--select', next.toSelectArg()]);
+    }
+  }
 
   Future<void> _runCli(List<String> args) async {
     final t = _ref.read(translationsProvider).requireValue;
@@ -376,7 +399,7 @@ class CliBridge with AppLogger {
       notifications.showErrorToast(t.cliSync.notFound);
       return;
     }
-    if (_ref.read(cliEngineProvider).busy) return;
+    _cliRunning = true;
     _engine.publish(_ref.read(cliEngineProvider).copyWith(busy: true));
     try {
       loggy.info('cli-sync: axiom ${args.join(" ")}');
@@ -386,8 +409,10 @@ class CliBridge with AppLogger {
         notifications.showErrorToast(t.cliSync.commandFailed(error: result.message));
       }
     } finally {
+      _cliRunning = false;
       _engine.publish(_ref.read(cliEngineProvider).copyWith(busy: false));
       await _probe();
+      if (_pendingSelection != null) unawaited(_drainSelections());
     }
   }
 }
