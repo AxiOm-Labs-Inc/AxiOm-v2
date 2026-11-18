@@ -133,6 +133,8 @@ CLI AxiOm хранит данные отдельно — в `~/.config/axiom/cli
 
 В AppImage используйте `./AxiOm.AppImage cli <команда>`: CLI скачается при первом запуске. Если загрузка не удалась, графическое приложение остаётся доступным.
 
+Приложение и CLI показывают одно состояние VPN и один выбранный сервер: включить, выключить VPN или сменить сервер можно с любой стороны. К каждому релизу приложения прикладываются `AxiOm-cli-linux-amd64.tar.gz` и `AxiOm-cli-windows-amd64.zip` с последним SBX (workflow `cli-assets.yml`, вручную — `scripts/package_cli_assets.sh --upload <тег>`): через них старый CLI (`cli-v0.0.x`) командой `axiom update` обновляется до SBX. Если старый CLI распакован вручную (например, `C:\AxiOm-cli` или `~/axiom-cli`), приложение после обновления само заменит его на SBX.
+
 ## 🌎 Переводы
 
 Улучшайте существующие языки или добавляйте новые, вручную редактируя JSON-файлы, расположенные в `/assets/translations`, или используя [Онлайн редактор Inlang](https://fink.inlang.com/editor/github.com/hiddify/hiddify-app)

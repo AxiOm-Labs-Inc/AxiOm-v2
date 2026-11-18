@@ -1,0 +1,34 @@
+name: CLI assets
+
+# Архивы AxiOm-cli-*-amd64 с последним SBX: через них старый Go-CLI (cli-v0.0.x)
+# командой `axiom update` заменяет себя на SBX. Сборка — scripts/package_cli_assets.sh.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Тег релиза AxiOm, к которому приложить архивы
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cli-assets-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  cli-assets:
+    # Релизы самого старого CLI (cli-v*) не трогаем.
+    if: ${{ !startsWith(github.event.release.tag_name || inputs.tag, 'cli-v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package and upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: bash scripts/package_cli_assets.sh -o "$RUNNER_TEMP/cli-assets" --upload "$RELEASE_TAG"
