@@ -37,6 +37,20 @@ void main() {
   late CliSyncService service;
   Timer? ticker;
 
+  Future<ProcessResult> axiom(List<String> args) async {
+    final result = await Process.run(
+      python,
+      ['-X', 'utf8', axiomPy, ...args],
+      environment: env,
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
+    ).timeout(const Duration(seconds: 60));
+    // Вывод CLI — в журнал теста: при падении видно, что ответил sbx.py.
+    // ignore: avoid_print
+    print('axiom ${args.join(" ")} → ${result.exitCode}\nstdout: ${result.stdout}\nstderr: ${result.stderr}');
+    return result;
+  }
+
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('cli_sync_sbx_');
     final home = p.join(tmp.path, 'home');
@@ -97,6 +111,13 @@ void main() {
     );
     await service.start();
     ticker = Timer.periodic(const Duration(milliseconds: 200), (_) => unawaited(service.tick()));
+    // Сервер у CLI (тот же, что в списке приложения): меню CLI не пустое, как у настоящего пользователя.
+    final add = await axiom([
+      'add',
+      'vless://11111111-2222-4333-8444-555555555555@192.0.2.1:443?type=ws&security=tls&sni=example.com'
+          '#France%20(u)%20%5Bws%5D',
+    ]);
+    expect(add.exitCode, 0, reason: 'axiom add');
   });
 
   tearDown(() async {
@@ -107,19 +128,6 @@ void main() {
     } catch (_) {}
   });
 
-  Future<ProcessResult> axiom(List<String> args) async {
-    final result = await Process.run(
-      python,
-      ['-X', 'utf8', axiomPy, ...args],
-      environment: env,
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-    ).timeout(const Duration(seconds: 60));
-    // Вывод CLI — в журнал теста: при падении видно, что ответил sbx.py.
-    // ignore: avoid_print
-    print('axiom ${args.join(" ")} → ${result.exitCode}\nstdout: ${result.stdout}\nstderr: ${result.stderr}');
-    return result;
-  }
 
   test('status --json sees the app engine through app-state.json', () async {
     final result = await axiom(['status', '--json']);
@@ -140,6 +148,16 @@ void main() {
     expect(await prefsFile.readAsString(), prefsBefore, reason: 'while the app runs only the app writes prefs');
     final state = jsonDecode(await service.files.appStateFile.readAsString()) as Map<String, dynamic>;
     expect(state['selection'], {'c': '__auto__', 'p': '', 't': ''});
+  });
+
+  test('a partial selection is resolved identically on both sides', () async {
+    final result = await axiom(['use', '--select', 'France']);
+    expect(result.exitCode, 0);
+    const full = ServerSelection(c: 'France', p: 'vless', t: 'ws');
+    expect(engine.persisted, [full]);
+    expect(engine.applied, [full]);
+    final state = jsonDecode(await service.files.appStateFile.readAsString()) as Map<String, dynamic>;
+    expect(state['selection'], full.toJson());
   });
 
   test('disconnect from the CLI stops the app engine and waits for a truthful ack', () async {

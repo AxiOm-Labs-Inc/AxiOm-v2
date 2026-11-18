@@ -119,6 +119,7 @@ class _AppEngineAdapter implements AppEngineAdapter {
     }
     if (group == null) return 'список серверов ядра приложения недоступен';
     final groupTag = group.tag;
+    var selectedTag = group.selected;
     var options = ServerOption.parse(group);
     final String rawTag;
     if (selection.isAuto) {
@@ -135,7 +136,7 @@ class _AppEngineAdapter implements AppEngineAdapter {
               .first
               .timeout(const Duration(seconds: 6));
           final fresh = measured!;
-          group = fresh;
+          selectedTag = fresh.selected;
           options = ServerOption.parse(fresh);
           best = ServerOption.fastest(options);
         } catch (_) {}
@@ -147,7 +148,7 @@ class _AppEngineAdapter implements AppEngineAdapter {
       if (option == null) return 'сервера «${selection.toSelectArg()}» нет в ядре приложения';
       rawTag = option.rawTag;
     }
-    if (group.selected == rawTag) return null;
+    if (selectedTag == rawTag) return null;
     final selected = await repo.selectProxy(groupTag, rawTag).run();
     return selected.match<String?>((failure) => 'не удалось переключить сервер: $failure', (_) => null);
   }
