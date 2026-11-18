@@ -121,6 +121,7 @@ void main() {
     expect((await appState())['connected'], isFalse);
 
     engine.status = AppEngineStatus.connected;
+    engine.coreRunning = null; // ядро снова работает (по состоянию экрана)
     engine.stopError = 'core error';
     final failed = await run('disconnect');
     expect(failed.ok, isFalse);
