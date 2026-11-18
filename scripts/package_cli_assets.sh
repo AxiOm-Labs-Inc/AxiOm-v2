@@ -5,7 +5,7 @@
 # и распаковывает его поверх своей папки. Поэтому к релизу приложения прикладываются:
 #   AxiOm-cli-linux-amd64.tar.gz  — один файл `axiom` (= sbx.py, права 0755);
 #   AxiOm-cli-windows-amd64.zip   — один файл `axiom.exe` (= sbx-windows-amd64.exe).
-# Файлы берутся из релиза SBX и сверяются с sha256 из GitHub API (поле digest).
+# Файлы берутся из релиза SBX (не старше 1.4.0) и сверяются с sha256 из GitHub API (поле digest).
 #
 # Использование:
 #   scripts/package_cli_assets.sh [-o КАТАЛОГ] [--sbx-tag vX.Y.Z] [--upload ТЕГ_РЕЛИЗА_AXIOM]
@@ -43,6 +43,15 @@ fi
 resolved_tag=$(gh api "$release_api" --jq '.tag_name')
 [ -n "$resolved_tag" ] || die "не найден релиз SBX ($release_api)"
 echo "SBX: $SBX_REPO $resolved_tag"
+
+# Синхронизация с приложением (cli-sync) есть только в SBX >= 1.4.0 — старее не упаковываем.
+if ! [[ "$resolved_tag" =~ ^v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  die "тег релиза SBX не вида vX.Y.Z: $resolved_tag"
+fi
+major=${BASH_REMATCH[1]} minor=${BASH_REMATCH[2]}
+if [ "$major" -lt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -lt 4 ]; }; then
+  die "SBX $resolved_tag старше 1.4.0: в нём нет синхронизации с приложением; упаковка отменена"
+fi
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

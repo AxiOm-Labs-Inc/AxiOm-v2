@@ -30,7 +30,7 @@ The AxiOm CLI keeps its own data in `~/.config/axiom/cli` (Linux) / `%APPDATA%\A
 
 With AppImage, use `./AxiOm.AppImage cli <command>` instead; it downloads the CLI on first use. If the download fails, the desktop app is still available.
 
-The app and the CLI share one VPN state and one selected server. Each app release also carries `AxiOm-cli-linux-amd64.tar.gz` and `AxiOm-cli-windows-amd64.zip` with the latest SBX (`cli-assets.yml`, or manually `scripts/package_cli_assets.sh --upload <tag>`), so the old CLI (`cli-v0.0.x`) upgrades itself to SBX via `axiom update`; a manually unpacked old CLI is replaced by the app after an update.
+The app and the CLI share one VPN state and one selected server. Each app release also carries `AxiOm-cli-linux-amd64.tar.gz` and `AxiOm-cli-windows-amd64.zip` with the latest SBX, 1.4.0 or newer (`cli-assets.yml`, or manually `scripts/package_cli_assets.sh --upload <tag>`), so the old CLI (`cli-v0.0.x`) upgrades itself to SBX via `axiom update`; a manually unpacked old CLI is replaced by the app after an update.
 
 ## Build
 
