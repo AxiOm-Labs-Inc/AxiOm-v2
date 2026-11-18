@@ -4,6 +4,9 @@
 // Нужен путь к sbx.py в SBX_PY (стенд CI берёт его из ветки SBX, указанной в sbx-ref.txt). Без него
 // тест пропускается, а при CLI_SYNC_REQUIRE_SBX=1 — падает. Python: SBX_PYTHON, иначе python3 / python.
 
+@Timeout(Duration(minutes: 3))
+library;
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -51,6 +54,26 @@ void main() {
     return result;
   }
 
+  // Windows: .cmd как «sing-box» CLI запустить не может (WinError 216) — настоящий exe-заглушка из Dart.
+  String? windowsFakeSingBox;
+  setUpAll(() async {
+    if (!Platform.isWindows) return;
+    final dir = await Directory.systemTemp.createTemp('fake_sing_box_');
+    final source = File(p.join(dir.path, 'fake_sing_box.dart'));
+    await source.writeAsString(
+      "import 'dart:io';\n"
+      'void main(List<String> args) {\n'
+      "  if (args.isNotEmpty && args.first == 'version') stdout.writeln('sing-box version 1.13.0');\n"
+      "  if (Platform.environment['FAKE_SINGBOX_SLOW'] != null) sleep(const Duration(seconds: 3));\n"
+      '  exit(0);\n'
+      '}\n',
+    );
+    final exe = p.join(dir.path, 'sing-box.exe');
+    final compiled = await Process.run('dart', ['compile', 'exe', source.path, '-o', exe], runInShell: true);
+    expect(compiled.exitCode, 0, reason: 'dart compile exe: ${compiled.stdout}\n${compiled.stderr}');
+    windowsFakeSingBox = exe;
+  });
+
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('cli_sync_sbx_');
     final home = p.join(tmp.path, 'home');
@@ -94,13 +117,8 @@ void main() {
     await File(sbxPy).copy(axiomPy);
     // Ядро sing-box CLI здесь не запускается: подставное `check`/`version` (иначе `add` проверяет конфиг
     // настоящим sing-box, а на Windows ещё и скачивает его с GitHub).
-    final singBox = File(p.join(tmp.path, 'bin', Platform.isWindows ? 'sing-box.cmd' : 'sing-box'));
-    if (Platform.isWindows) {
-      await singBox.writeAsString(
-        '@echo off\r\nif "%1"=="version" echo sing-box version 1.13.0\r\n'
-        'if defined FAKE_SINGBOX_SLOW ping -n 4 127.0.0.1 >nul\r\nexit /b 0\r\n',
-      );
-    } else {
+    final singBox = File(Platform.isWindows ? windowsFakeSingBox! : p.join(tmp.path, 'bin', 'sing-box'));
+    if (!Platform.isWindows) {
       // FAKE_SINGBOX_SLOW: «подготовка» CLI (проверка конфига) идёт 3 с — окно для намерения «выключить».
       await singBox.writeAsString(
         '#!/bin/sh\n[ "\$1" = version ] && echo "sing-box version 1.13.0"\n'
