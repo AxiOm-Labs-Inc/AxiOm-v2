@@ -37,11 +37,11 @@ void main() {
   late CliSyncService service;
   Timer? ticker;
 
-  Future<ProcessResult> axiom(List<String> args) async {
+  Future<ProcessResult> axiom(List<String> args, {Map<String, String> extraEnv = const {}}) async {
     final result = await Process.run(
       python,
       ['-X', 'utf8', axiomPy, ...args],
-      environment: env,
+      environment: {...env, ...extraEnv},
       stdoutEncoding: utf8,
       stderrEncoding: utf8,
     ).timeout(const Duration(seconds: 60));
@@ -82,7 +82,12 @@ void main() {
     // Каталог приложения находится и по старому правилу CLI (db.sqlite), и по app-location.json.
     await File(p.join(support, 'db.sqlite')).writeAsBytes(const []);
     await File(p.join(support, 'shared_preferences.json')).writeAsString(
-      jsonEncode({'flutter.server_selector_country': 'France', 'flutter.server_selector_protocol': 'vless'}),
+      // region other — CLI не скачивает наборы правил (сеть в тесте не нужна).
+      jsonEncode({
+        'flutter.server_selector_country': 'France',
+        'flutter.server_selector_protocol': 'vless',
+        'flutter.region': 'other',
+      }),
     );
     axiomPy = p.join(tmp.path, 'bin', 'axiom.py');
     await Directory(p.dirname(axiomPy)).create(recursive: true);
@@ -91,9 +96,16 @@ void main() {
     // настоящим sing-box, а на Windows ещё и скачивает его с GitHub).
     final singBox = File(p.join(tmp.path, 'bin', Platform.isWindows ? 'sing-box.cmd' : 'sing-box'));
     if (Platform.isWindows) {
-      await singBox.writeAsString('@echo off\r\nif "%1"=="version" echo sing-box version 1.13.0\r\nexit /b 0\r\n');
+      await singBox.writeAsString(
+        '@echo off\r\nif "%1"=="version" echo sing-box version 1.13.0\r\n'
+        'if defined FAKE_SINGBOX_SLOW ping -n 4 127.0.0.1 >nul\r\nexit /b 0\r\n',
+      );
     } else {
-      await singBox.writeAsString('#!/bin/sh\n[ "\$1" = version ] && echo "sing-box version 1.13.0"\nexit 0\n');
+      // FAKE_SINGBOX_SLOW: «подготовка» CLI (проверка конфига) идёт 3 с — окно для намерения «выключить».
+      await singBox.writeAsString(
+        '#!/bin/sh\n[ "\$1" = version ] && echo "sing-box version 1.13.0"\n'
+        '[ -n "\$FAKE_SINGBOX_SLOW" ] && sleep 3\nexit 0\n',
+      );
       await Process.run('chmod', ['755', singBox.path]);
     }
     env['SBX_SING_BOX'] = singBox.path;
@@ -222,6 +234,42 @@ void main() {
       final reservation = await service.reserveStart();
       expect(reservation, isNotNull, reason: 'the kernel released the lock of the dead holder');
       await service.releaseStart(reservation!);
+    });
+  });
+
+  group('user intent (vpn-intent.json) between the app and the real CLI', () {
+    test('CLI OFF while the app is preparing its start → the app start is cancelled', () async {
+      engine.status = AppEngineStatus.disconnected;
+      await service.writeState(force: true);
+      final on = await service.writeIntent(on: true); // кнопка «включить»; приложение обновляет подписку
+      expect(await service.startStillWanted(on), isTrue);
+      // CLI пишет «выключить» первым делом; остановка своей (несуществующей) службы на CI — не предмет теста.
+      await axiom(['down']);
+      final latest = await service.files.readIntent();
+      expect(latest?.by, 'cli');
+      expect(latest?.want, 'off');
+      expect(await service.startStillWanted(on), isFalse, reason: 'the app aborts its start');
+    });
+
+    test('app OFF while `axiom up` prepares → the CLI cancels its start', () async {
+      engine.status = AppEngineStatus.disconnected;
+      await service.writeState(force: true);
+      await addCliServer();
+      final before = await service.files.readIntent();
+      final up = axiom(['up', '--force'], extraEnv: {'FAKE_SINGBOX_SLOW': '1'});
+      // Как только CLI записал своё «включить» — пользователь приложения нажимает «выключить».
+      VpnIntent? cliOn;
+      for (var i = 0; i < 3000 && cliOn == null; i++) {
+        final intent = await service.files.readIntent();
+        if (intent != null && intent.by == 'cli' && intent.want == 'on' && intent.id != before?.id) cliOn = intent;
+        if (cliOn == null) await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(cliOn, isNotNull, reason: 'axiom up writes its ON intent');
+      await service.writeIntent(on: false);
+      final result = await up;
+      expect(result.exitCode, 0);
+      expect(result.stdout as String, contains('запуск отменён'));
+      expect(result.stdout as String, isNot(contains('✓ VPN включён')));
     });
   });
 }

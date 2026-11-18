@@ -127,12 +127,13 @@ void main() {
       expect(intent['id'], on.id);
       await service.writeIntent(on: true);
       expect(await service.startStillWanted(on), isTrue, reason: 'another ON is no reason to abort');
-      // OFF от CLI (как пишет sbx.py).
+      // OFF от CLI (как пишет sbx.py: ts строго больше предыдущего).
+      final latest = (await service.files.readIntent())!;
       await writeJsonAtomic(service.files.intentFile, {
         'v': 1,
         'want': 'off',
         'id': const Uuid().v4(),
-        'ts': now(),
+        'ts': now() > latest.tsMs ? now() : latest.tsMs + 1,
         'by': 'cli',
       });
       expect(await service.startStillWanted(on), isFalse);

@@ -483,8 +483,8 @@ class VpnIntent {
     return VpnIntent(want: want as String, id: id, tsMs: ts, by: by as String);
   }
 
-  /// Отменяет ли это намерение запуск, начатый намерением [on]: «выключить», и оно новее.
-  bool cancels(VpnIntent on) => off && id != on.id && tsMs >= on.tsMs;
+  /// Отменяет ли это намерение запуск, начатый намерением [on]: «выключить», и оно новее (ts строго растёт).
+  bool cancels(VpnIntent on) => off && id != on.id && tsMs > on.tsMs;
 }
 
 /// `start.owner.json` — кто взял start.lock (только для сообщений).
