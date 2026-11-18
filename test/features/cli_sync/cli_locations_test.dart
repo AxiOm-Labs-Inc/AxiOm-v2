@@ -6,22 +6,30 @@ void main() {
     const env = {'APPDATA': r'C:\Users\u\AppData\Roaming', 'USERPROFILE': r'C:\Users\u'};
     const exeDir = r'C:\Program Files\AxiOm';
 
-    test('installer CLI next to the app', () {
-      expect(CliLocations.binaryCandidates(isWindows: true, exeDir: exeDir, env: env), [
+    test('installer CLI next to the app, then migrated standalone CLIs', () {
+      expect(CliLocations.installerPaths(isWindows: true, exeDir: exeDir, env: env), [
         r'C:\Program Files\AxiOm\cli\axiom.exe',
       ]);
-      expect(
-        CliLocations.findBinary(isWindows: true, exeDir: exeDir, env: env, exists: (_) => true),
-        r'C:\Program Files\AxiOm\cli\axiom.exe',
-      );
-      expect(CliLocations.findBinary(isWindows: true, exeDir: exeDir, env: env, exists: (_) => false), isNull);
       expect(CliLocations.installerSourceCandidates(isWindows: true, exeDir: exeDir, env: env), [
         r'C:\Program Files\AxiOm\cli\axiom.exe',
       ]);
+      expect(
+        CliLocations.runtimeCandidates(
+          isWindows: true,
+          exeDir: exeDir,
+          env: env,
+          migrated: [r'C:\AxiOm-cli\axiom.exe', r'c:\program files\axiom\CLI\axiom.exe'],
+        ),
+        [r'C:\Program Files\AxiOm\cli\axiom.exe', r'C:\AxiOm-cli\axiom.exe'],
+      );
     });
 
-    test('CLI state and sync dir', () {
+    test('CLI state, app locator and sync dir', () {
       expect(CliLocations.stateFile(isWindows: true, env: env), r'C:\Users\u\AppData\Roaming\AxiOm\cli\state.json');
+      expect(
+        CliLocations.appLocationFile(isWindows: true, env: env),
+        r'C:\Users\u\AppData\Roaming\AxiOm\cli\app-location.json',
+      );
       expect(
         CliLocations.stateFile(isWindows: true, env: {'USERPROFILE': r'C:\Users\u'}),
         r'C:\Users\u\AppData\Roaming\AxiOm\cli\state.json',
@@ -37,26 +45,22 @@ void main() {
   group('Linux', () {
     const env = {'HOME': '/home/u', 'XDG_CONFIG_HOME': '/elsewhere'};
 
-    test('deb first, then AppImage copy', () {
-      final all = CliLocations.binaryCandidates(isWindows: false, exeDir: '/opt/x', env: env);
-      expect(all, ['/usr/bin/axiom', '/usr/lib/axiom/cli/axiom', '/home/u/.local/share/axiom/cli/axiom']);
-      expect(
-        CliLocations.findBinary(
-          isWindows: false,
-          exeDir: '/opt/x',
-          env: env,
-          exists: (path) => path.startsWith('/home'),
-        ),
-        '/home/u/.local/share/axiom/cli/axiom',
-      );
-      expect(CliLocations.installerSourceCandidates(isWindows: false, exeDir: '/opt/x', env: env), [
+    test('/usr/bin/axiom is skipped by migration but never used directly', () {
+      expect(CliLocations.installerPaths(isWindows: false, exeDir: '/opt/x', env: env), [
+        '/usr/bin/axiom',
         '/usr/lib/axiom/cli/axiom',
         '/home/u/.local/share/axiom/cli/axiom',
+      ]);
+      expect(CliLocations.runtimeCandidates(isWindows: false, exeDir: '/opt/x', env: env, migrated: ['/home/u/axiom-cli/axiom']), [
+        '/usr/lib/axiom/cli/axiom',
+        '/home/u/.local/share/axiom/cli/axiom',
+        '/home/u/axiom-cli/axiom',
       ]);
     });
 
     test('state ignores XDG_CONFIG_HOME like SBX', () {
       expect(CliLocations.stateFile(isWindows: false, env: env), '/home/u/.config/axiom/cli/state.json');
+      expect(CliLocations.appLocationFile(isWindows: false, env: env), '/home/u/.config/axiom/cli/app-location.json');
       expect(CliLocations.stateFile(isWindows: false, env: {}), isNull);
       expect(
         CliLocations.syncDir('/home/u/.local/share/app.hiddify.com', isWindows: false),

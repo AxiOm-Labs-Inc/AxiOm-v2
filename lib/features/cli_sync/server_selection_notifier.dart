@@ -1,5 +1,6 @@
-// Выбранный сервер (страна/протокол/транспорт) в одном месте: его пишут и карточка выбора сервера,
-// и команды CLI. Хранится в прежних настройках server_selector_country/protocol/transport.
+// Выбранный сервер (страна/протокол/транспорт) в одном месте (Windows, Linux): его пишут карточка выбора
+// сервера и команды CLI. Пока приложение работает, настройки пишет только оно (DESIGN-sync v2, п. 2).
+// Хранится в прежних настройках server_selector_country/protocol/transport.
 
 import 'package:hiddify/core/preferences/preferences_provider.dart';
 import 'package:hiddify/features/cli_sync/cli_sync_protocol.dart';
@@ -40,12 +41,6 @@ class ServerSelectionNotifier extends StateNotifier<ServerSelection> {
     if (next.c != previous.c) await _prefs.setString(serverSelectorCountryKey, next.c);
     if (next.p != previous.p) await _prefs.setString(serverSelectorProtocolKey, next.p);
     if (next.t != previous.t) await _prefs.setString(serverSelectorTransportKey, next.t);
-  }
-
-  /// Перечитать после того, как настройки на диске изменил CLI.
-  void reloadFromPrefs() {
-    final fresh = readServerSelection(_prefs);
-    if (fresh != state) state = fresh;
   }
 }
 

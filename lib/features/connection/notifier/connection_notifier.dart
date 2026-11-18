@@ -5,6 +5,7 @@ import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/features/cli_sync/cli_bridge.dart';
+import 'package:hiddify/features/cli_sync/cli_sync_service.dart';
 import 'package:hiddify/features/connection/data/connection_data_providers.dart';
 import 'package:hiddify/features/connection/data/connection_repository.dart';
 import 'package:hiddify/features/connection/model/connection_failure.dart';
@@ -75,6 +76,9 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
 
   Future<void> toggleConnection() async {
     final haptic = ref.read(hapticServiceProvider.notifier);
+    // CLI-синхронизация (Windows/Linux): общий OFF кнопки и трея — VPN включён через CLI
+    // (с ядром приложения или без) → выключить все движки.
+    if (cliSyncSupported && await _stopAllIfCliOn()) return;
     if (state case AsyncError()) {
       await haptic.lightImpact();
       await _connect();
@@ -124,6 +128,19 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     }
   }
 
+  /// Если VPN включён (или включается) через CLI — выключить и ядро приложения, и движок CLI. true — сделано.
+  Future<bool> _stopAllIfCliOn() async {
+    final bridge = ref.read(cliBridgeProvider);
+    if (!bridge.active || !await bridge.isCliOn()) return false;
+    await ref.read(hapticServiceProvider.notifier).mediumImpact();
+    await ref.read(Preferences.startedByUser.notifier).update(false);
+    if (state case AsyncData(value: Connected() || Connecting())) {
+      await _disconnect();
+    }
+    await bridge.stopCliEngine();
+    return true;
+  }
+
   final _singleStart = SingleCall();
 
   Future<void> _connect() async {
@@ -138,24 +155,36 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> _connectThrottled() async {
-    // CLI-синхронизация: VPN уже включён движком CLI — второй движок не запускаем.
-    if (await ref.read(cliBridgeProvider).isCliEngineRunningNow()) {
-      loggy.info("CLI engine is running, not starting the app engine");
+    // CLI-синхронизация (Windows/Linux): start.lock до любой подготовки; VPN уже включён или включается
+    // через CLI — второй движок не запускаем.
+    final bridge = cliSyncSupported ? ref.read(cliBridgeProvider) : null;
+    final reservation = bridge == null ? StartReservation.none() : await bridge.reserveAppStart();
+    if (reservation == null) {
+      loggy.info("VPN is on (or starting) via the CLI, not starting the app engine");
       await ref.read(Preferences.startedByUser.notifier).update(false);
       return;
     }
+    var started = false;
+    try {
+      started = await _connectReserved(reservation);
+    } finally {
+      if (bridge != null) await bridge.releaseAppStart(reservation, started: started);
+    }
+  }
 
+  /// Подключение под резервом запуска; true — ядро приложения запущено.
+  Future<bool> _connectReserved(StartReservation reservation) async {
     final initialProfile = await ref.read(activeProfileProvider.future);
     if (initialProfile == null) {
       loggy.info("no active profile, not connecting");
-      return;
+      return false;
     }
 
     // Refresh subscription before connecting for remote profiles.
     if (initialProfile is RemoteProfileEntity) {
       final notif = ref.read(inAppNotificationControllerProvider);
       notif.showLoadingToast('Обновление подписки...');
-      await ref
+      final refresh = ref
           .read(profileRepositoryProvider)
           .requireValue
           .upsertRemote(initialProfile.url)
@@ -168,13 +197,24 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
             notif.showSuccessToast('Подписка обновлена');
           })
           .run();
+      if (reservation.real) {
+        // start.lock чужой стороне виден свежим 60 с: обновление подписки ждём не дольше 40 с.
+        await Future.any<Object?>([refresh, Future<Object?>.delayed(const Duration(seconds: 40))]);
+      } else {
+        await refresh;
+      }
     }
 
     // Re-fetch — subscription may have been updated by the refresh above.
     final activeProfile = await ref.read(activeProfileProvider.future);
-    if (activeProfile == null) return;
+    if (activeProfile == null) return false;
+    if (reservation.cancelled) {
+      loggy.info("start cancelled by the CLI (disconnect), not connecting");
+      await ref.read(Preferences.startedByUser.notifier).update(false);
+      return false;
+    }
 
-    await _connectionRepo.connect(activeProfile, ref.read(Preferences.disableMemoryLimit)).mapLeft((
+    final result = await _connectionRepo.connect(activeProfile, ref.read(Preferences.disableMemoryLimit)).mapLeft((
       ConnectionFailure err,
     ) async {
       loggy.warning("error connecting", err);
@@ -186,6 +226,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       await ref.read(Preferences.startedByUser.notifier).update(false);
       state = AsyncError(err, StackTrace.current);
     }).run();
+    return result.isRight();
   }
 
   Future<void> _disconnect() async {

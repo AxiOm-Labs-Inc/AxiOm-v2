@@ -186,20 +186,21 @@ class ConnectionButton extends HookConsumerWidget {
       _ => null,
     };
 
-    // CLI-синхронизация: VPN включён движком CLI, а ядро приложения выключено — кнопка показывает
-    // «подключено», нажатие выключает VPN через `axiom disconnect`.
+    // CLI-синхронизация: VPN включён (или включается) через CLI, а ядро приложения выключено — кнопка
+    // показывает «подключено»; нажатие — общий OFF (toggleConnection выключает все движки).
     final cliEngine = ref.watch(cliEngineProvider);
-    final cliOnly =
-        cliEngine.running && (connectionStatus is AsyncError || connectionStatus.valueOrNull is Disconnected);
+    final cliOnly = cliEngine.on && (connectionStatus is AsyncError || connectionStatus.valueOrNull is Disconnected);
     if (cliOnly) {
       return _ConnectionButton(
         extraWidget: Text(
           t.cliSync.connectedViaCli,
           style: const TextStyle(fontSize: 13, letterSpacing: 0.5, color: Color(0xFF5DCAA5)),
         ),
-        onTap: cliEngine.busy ? () {} : () => ref.read(cliBridgeProvider).disconnectCliEngine(),
+        onTap: cliEngine.busy ? () {} : () => ref.read(connectionNotifierProvider.notifier).toggleConnection(),
         enabled: !cliEngine.busy,
-        label: cliEngine.busy ? t.connection.disconnecting : t.connection.connected,
+        label: cliEngine.busy
+            ? t.connection.disconnecting
+            : (cliEngine.running ? t.connection.connected : t.connection.connecting),
         buttonColor: buttonTheme.connectedColor!,
         image: Assets.images.connectNorouz,
         isConnected: true,

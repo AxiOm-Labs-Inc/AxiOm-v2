@@ -13,10 +13,18 @@ class CliLocations {
     return home == null || home.isEmpty ? null : home;
   }
 
-  /// CLI, который ставит установщик приложения, в порядке поиска.
-  /// Windows: `<папка exe>\cli\axiom.exe`; Linux: deb (`/usr/bin/axiom`, `/usr/lib/axiom/cli/axiom`)
-  /// и AppImage (`~/.local/share/axiom/cli/axiom`).
-  static List<String> binaryCandidates({
+  /// Все пути, по которым лежит CLI установщика (вместе со ссылкой `/usr/bin/axiom` из deb).
+  /// Их замена старого CLI пропускает.
+  static List<String> installerPaths({
+    required bool isWindows,
+    required String exeDir,
+    required Map<String, String> env,
+  }) => [if (!isWindows) '/usr/bin/axiom', ...installerSourceCandidates(isWindows: isWindows, exeDir: exeDir, env: env)];
+
+  /// Сам файл CLI установщика (не ссылка), в порядке предпочтения.
+  /// Windows: `<папка exe>\cli\axiom.exe`; Linux: `/usr/lib/axiom/cli/axiom` (deb) или копия AppImage
+  /// `~/.local/share/axiom/cli/axiom`.
+  static List<String> installerSourceCandidates({
     required bool isWindows,
     required String exeDir,
     required Map<String, String> env,
@@ -25,33 +33,25 @@ class CliLocations {
     if (isWindows) return [ctx.join(exeDir, 'cli', 'axiom.exe')];
     final home = _home(false, env);
     return [
-      '/usr/bin/axiom',
       '/usr/lib/axiom/cli/axiom',
       if (home != null) ctx.join(home, '.local', 'share', 'axiom', 'cli', 'axiom'),
     ];
   }
 
-  static String? findBinary({
+  /// CLI для команд приложения: сначала установщика, затем бывшие старые CLI, заменённые на SBX
+  /// ([migrated]). `/usr/bin/axiom` отдельно не берётся: в deb это ссылка на `/usr/lib/axiom/cli/axiom`,
+  /// а чужой `/usr/bin/axiom` использовать нельзя.
+  static List<String> runtimeCandidates({
     required bool isWindows,
     required String exeDir,
     required Map<String, String> env,
-    required bool Function(String path) exists,
+    List<String> migrated = const [],
   }) {
-    for (final path in binaryCandidates(isWindows: isWindows, exeDir: exeDir, env: env)) {
-      if (exists(path)) return path;
-    }
-    return null;
-  }
-
-  /// Файл, из которого установщик берёт CLI для замены старого Go-CLI (настоящий файл, не ссылка).
-  /// Windows: `<папка exe>\cli\axiom.exe`; Linux: `/usr/lib/axiom/cli/axiom` (deb) или копия AppImage.
-  static List<String> installerSourceCandidates({
-    required bool isWindows,
-    required String exeDir,
-    required Map<String, String> env,
-  }) {
-    final all = binaryCandidates(isWindows: isWindows, exeDir: exeDir, env: env);
-    return isWindows ? all : all.where((path) => path != '/usr/bin/axiom').toList();
+    final seen = <String>{};
+    return [
+      ...installerSourceCandidates(isWindows: isWindows, exeDir: exeDir, env: env),
+      ...migrated,
+    ].where((path) => seen.add(isWindows ? path.toLowerCase() : path)).toList();
   }
 
   /// Каталог настроек CLI в режиме AxiOm (как в SBX: `%APPDATA%\AxiOm\cli`, `~/.config/axiom/cli`;
@@ -71,6 +71,12 @@ class CliLocations {
   static String? stateFile({required bool isWindows, required Map<String, String> env}) {
     final dir = configDir(isWindows: isWindows, env: env);
     return dir == null ? null : _ctx(isWindows).join(dir, 'state.json');
+  }
+
+  /// `<каталог настроек CLI>/app-location.json` — указатель на работающее приложение.
+  static String? appLocationFile({required bool isWindows, required Map<String, String> env}) {
+    final dir = configDir(isWindows: isWindows, env: env);
+    return dir == null ? null : _ctx(isWindows).join(dir, 'app-location.json');
   }
 
   /// `<данные приложения>/cli-sync` — тот же каталог, что находит SBX (установка или portable).

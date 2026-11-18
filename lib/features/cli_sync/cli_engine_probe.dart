@@ -38,7 +38,7 @@ CliApiSettings? parseCliApiSettings(String text) {
 }
 
 class CliEngineState {
-  const CliEngineState({required this.running, this.now, this.busy = false});
+  const CliEngineState({required this.running, this.now, this.busy = false, this.starting = false});
 
   /// Движок CLI отвечает.
   final bool running;
@@ -49,20 +49,34 @@ class CliEngineState {
   /// Приложение сейчас выполняет команду CLI (axiom disconnect / use).
   final bool busy;
 
+  /// CLI держит свежий start.lock: VPN включается через CLI.
+  final bool starting;
+
+  /// VPN включён (или включается) через CLI.
+  bool get on => running || starting;
+
   static const stopped = CliEngineState(running: false);
 
-  CliEngineState copyWith({bool? running, String? now, bool? busy}) =>
-      CliEngineState(running: running ?? this.running, now: now ?? this.now, busy: busy ?? this.busy);
+  CliEngineState copyWith({bool? running, String? now, bool? busy, bool? starting}) => CliEngineState(
+    running: running ?? this.running,
+    now: now ?? this.now,
+    busy: busy ?? this.busy,
+    starting: starting ?? this.starting,
+  );
 
   @override
   bool operator ==(Object other) =>
-      other is CliEngineState && other.running == running && other.now == now && other.busy == busy;
+      other is CliEngineState &&
+      other.running == running &&
+      other.now == now &&
+      other.busy == busy &&
+      other.starting == starting;
 
   @override
-  int get hashCode => Object.hash(running, now, busy);
+  int get hashCode => Object.hash(running, now, busy, starting);
 
   @override
-  String toString() => 'CliEngineState(running: $running, now: $now, busy: $busy)';
+  String toString() => 'CliEngineState(running: $running, now: $now, busy: $busy, starting: $starting)';
 }
 
 Future<CliEngineState> probeCliEngine(
