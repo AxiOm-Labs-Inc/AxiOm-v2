@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiddify/features/cli_sync/cli_sync_protocol.dart';
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 void main() {
   late Directory tmp;
@@ -66,46 +67,64 @@ void main() {
   });
 
   test('a command is executed once, a new id again', () async {
-    await writeControl(control('id-1'));
+    final id1 = const Uuid().v4();
+    final id2 = const Uuid().v4();
+    await writeControl(control(id1));
     final first = await files.pollControl(now());
-    expect(first?.id, 'id-1');
+    expect(first?.id, id1);
     expect(await files.pollControl(now()), isNull, reason: 'unchanged file');
 
-    await writeControl(control('id-1', ts: now() + 1));
+    await writeControl(control(id1, ts: now() + 1));
     expect(await files.pollControl(now()), isNull, reason: 'same id rewritten');
 
     await writeControl(
-      control('id-2', cmd: 'select', selection: {'c': '__auto__', 'p': '', 't': ''}),
+      control(id2, cmd: 'select', selection: {'c': '__auto__', 'p': '', 't': ''}),
     );
     final second = await files.pollControl(now());
-    expect(second?.id, 'id-2');
+    expect(second?.id, id2);
     expect(second?.selection, ServerSelection.auto);
   });
 
   test('commands older than 30 s are ignored', () async {
-    await writeControl(control('old', ts: now() - 31000));
+    final id = const Uuid().v4();
+    await writeControl(control(id, ts: now() - 31000));
     expect(await files.pollControl(now()), isNull);
-    expect(files.tracker.hasSeen('old'), isTrue);
+    expect(files.tracker.hasSeen(id), isTrue);
+  });
+
+  test('after a restart a command that already has an ack is not executed again', () async {
+    final id = const Uuid().v4();
+    await writeControl(control(id));
+    expect(await files.writeAck(ControlAck(id: id, ok: true, tsMs: now())), isTrue);
+    final restarted = CliSyncFiles(files.dir);
+    await restarted.initDedupFromAck();
+    expect(await restarted.pollControl(now()), isNull);
+    final fresh = CliSyncFiles(files.dir);
+    await files.ackFile.delete();
+    await fresh.initDedupFromAck();
+    expect((await fresh.pollControl(now()))?.id, id, reason: 'no ack yet — still to execute');
   });
 
   test('a half-written file is not remembered and is read again', () async {
-    await Future<void>.delayed(const Duration(milliseconds: 30));
+    final id = const Uuid().v4();
     await files.controlFile.parent.create(recursive: true);
-    await files.controlFile.writeAsString('{"v":1,"id":"half"');
+    await files.controlFile.writeAsString('{"v":1,"id":"$id"');
     expect(await files.pollControl(now()), isNull);
-    expect(files.tracker.hasSeen('half'), isFalse);
-    await writeControl(control('half'));
-    expect((await files.pollControl(now()))?.id, 'half');
+    expect(files.tracker.hasSeen(id), isFalse);
+    await writeControl(control(id));
+    expect((await files.pollControl(now()))?.id, id);
   });
 
   test('ack is written with the command id', () async {
-    expect(await files.writeAck(ControlAck(id: 'id-9', ok: false, error: 'нет сервера', tsMs: now())), isTrue);
+    final id = const Uuid().v4();
+    expect(await files.writeAck(ControlAck(id: id, ok: false, error: 'нет сервера', tsMs: now())), isTrue);
     expect(p.basename(files.ackFile.path), 'control-ack.json');
     final json = jsonDecode(await files.ackFile.readAsString()) as Map<String, dynamic>;
     expect(json['v'], 1);
-    expect(json['id'], 'id-9');
+    expect(json['id'], id);
     expect(json['ok'], isFalse);
     expect(json['error'], 'нет сервера');
     expect(json['ts'], isA<int>());
   });
 }
+

@@ -13,6 +13,10 @@ const cliSyncDirName = 'cli-sync';
 const appStateFileName = 'app-state.json';
 const controlFileName = 'control.json';
 const controlAckFileName = 'control-ack.json';
+const startLockFileName = 'start.lock';
+
+/// Файл-указатель на запущенное приложение в каталоге настроек CLI.
+const appLocationFileName = 'app-location.json';
 
 const cliSyncProtocolVersion = 1;
 
@@ -28,8 +32,16 @@ const controlPollInterval = Duration(seconds: 1);
 /// Команды старше этого не выполняются.
 const controlMaxAge = Duration(seconds: 30);
 
+/// Чужой start.lock моложе этого — «VPN включается».
+const startLockFreshFor = Duration(seconds: 60);
+
 /// Ключ страны «авто» — как в настройках приложения.
 const autoCountryKey = '__auto__';
+
+final _uuid4 = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$', caseSensitive: false);
+
+/// id команд — только uuid4.
+bool isUuid4(String value) => _uuid4.hasMatch(value);
 
 /// Выбор сервера в кодировке настроек приложения:
 /// `c` — страна ('__auto__' для авто), `p`/`t` — протокол и транспорт ('' если не заданы).
@@ -57,7 +69,7 @@ class ServerSelection {
   }
 
   /// Аргумент `--select "C|P|T"` для CLI. У авто протокол и транспорт не передаются.
-  String toSelectArg() => isAuto ? '$autoCountryKey||' : '$c|$p|$t';
+  String toSelectArg() => isAuto ? autoCountryKey : '$c|$p|$t';
 
   ServerSelection copyWith({String? c, String? p, String? t}) =>
       ServerSelection(c: c ?? this.c, p: p ?? this.p, t: t ?? this.t);
@@ -168,7 +180,7 @@ class ControlCommand {
     final id = json['id'];
     final ts = json['ts'];
     final cmdName = json['cmd'];
-    if (id is! String || id.isEmpty || ts is! int || cmdName is! String) return null;
+    if (id is! String || !isUuid4(id) || ts is! int || cmdName is! String) return null;
     ControlCmd? cmd;
     for (final c in ControlCmd.values) {
       if (c.name == cmdName) cmd = c;
@@ -196,6 +208,24 @@ class ControlAck {
   final bool ok;
   final String? error;
   final int tsMs;
+
+  /// Разбор control-ack.json (для дедупликации после перезапуска); null — не по протоколу.
+  static ControlAck? tryParse(String text) {
+    final Object? json;
+    try {
+      json = jsonDecode(text);
+    } catch (_) {
+      return null;
+    }
+    if (json is! Map || json['v'] != cliSyncProtocolVersion) return null;
+    final id = json['id'];
+    final ok = json['ok'];
+    final ts = json['ts'];
+    final error = json['error'];
+    if (id is! String || !isUuid4(id) || ok is! bool || ts is! int) return null;
+    if (error != null && error is! String) return null;
+    return ControlAck(id: id, ok: ok, tsMs: ts, error: error as String?);
+  }
 
   Map<String, dynamic> toJson() => {
     'v': cliSyncProtocolVersion,
@@ -265,7 +295,7 @@ class CliSyncFiles {
   File get controlFile => File('${dir.path}${Platform.pathSeparator}$controlFileName');
   File get ackFile => File('${dir.path}${Platform.pathSeparator}$controlAckFileName');
 
-  String? _lastControlStamp;
+  File get startLockFile => File('${dir.path}${Platform.pathSeparator}$startLockFileName');
 
   Future<bool> writeAppState(AppSyncState state) => writeJsonAtomic(appStateFile, state.toJson());
 
@@ -275,30 +305,28 @@ class CliSyncFiles {
     } catch (_) {}
   }
 
+  /// Дедупликация после перезапуска: команда, на которую уже есть ответ, считается выполненной.
+  Future<void> initDedupFromAck() async {
+    try {
+      final ack = ControlAck.tryParse(await ackFile.readAsString());
+      if (ack != null) tracker.markSeen(ack.id);
+    } catch (_) {}
+  }
+
   /// Новая команда для выполнения или null.
   ///
-  /// Файл перечитывается только при смене времени изменения или размера. Нечитаемый или недописанный
-  /// файл не запоминается — его прочтут снова на следующем опросе. Устаревшая команда
-  /// помечается как увиденная и пропускается.
+  /// Файл маленький — читается целиком на каждом опросе, повторы отсекаются по id. Нечитаемый или
+  /// недописанный файл не запоминается — его прочтут снова. Устаревшая команда пропускается.
   Future<ControlCommand?> pollControl(int nowMs) async {
-    final FileStat stat;
-    try {
-      stat = await controlFile.stat();
-    } catch (_) {
-      return null;
-    }
-    if (stat.type != FileSystemEntityType.file) return null;
-    final stamp = '${stat.modified.microsecondsSinceEpoch}:${stat.size}';
-    if (_lastControlStamp == stamp) return null;
     final String text;
     try {
+      if (!await controlFile.exists()) return null;
       text = await controlFile.readAsString();
     } catch (_) {
       return null;
     }
     final command = ControlCommand.tryParse(text);
     if (command == null) return null;
-    _lastControlStamp = stamp;
     switch (tracker.evaluate(command, nowMs)) {
       case ControlDecision.execute:
         tracker.markSeen(command.id);
@@ -319,4 +347,111 @@ class CliSyncFiles {
     }
     return false;
   }
+}
+
+
+/// Содержимое start.lock: кто (app | cli) запускает движок и когда.
+class StartLockInfo {
+  const StartLockInfo({required this.owner, required this.id, required this.tsMs});
+
+  /// 'app', 'cli' или '' (файл пуст / недописан — считается чужим, возраст по mtime).
+  final String owner;
+  final String id;
+  final int tsMs;
+
+  bool isFresh(int nowMs) => nowMs - tsMs < startLockFreshFor.inMilliseconds;
+
+  Map<String, dynamic> toJson() => {'owner': owner, 'id': id, 'ts': tsMs};
+}
+
+/// Резерв запуска движка: `start.lock`, создаётся только эксклюзивно (как O_EXCL у CLI).
+class StartLock {
+  StartLock(this.file);
+
+  final File file;
+
+  /// Текущий замок или null, если его нет.
+  Future<StartLockInfo?> read() async {
+    try {
+      final stat = await file.stat();
+      if (stat.type == FileSystemEntityType.notFound) return null;
+      final mtime = stat.modified.millisecondsSinceEpoch;
+      try {
+        final json = jsonDecode(await file.readAsString());
+        if (json is Map && json['owner'] is String && json['id'] is String && json['ts'] is int) {
+          return StartLockInfo(owner: json['owner'] as String, id: json['id'] as String, tsMs: json['ts'] as int);
+        }
+      } catch (_) {}
+      return StartLockInfo(owner: '', id: '', tsMs: mtime);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Взять замок для [owner] с [id]. false — его держит другой (и он свежий).
+  /// Устаревший (старше 60 с) замок удаляется и берётся заново.
+  Future<bool> tryAcquire(String owner, String id, int nowMs) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        await file.parent.create(recursive: true);
+        await file.create(exclusive: true);
+        await file.writeAsString(
+          jsonEncode(StartLockInfo(owner: owner, id: id, tsMs: nowMs).toJson()),
+          flush: true,
+        );
+        return true;
+      } on FileSystemException {
+        final current = await read();
+        if (current == null) continue; // успели удалить — ещё раз
+        if (current.isFresh(nowMs)) return false;
+        try {
+          await file.delete();
+        } catch (_) {
+          return false;
+        }
+      }
+    }
+    return false;
+  }
+
+  /// Снять свой замок (чужой не трогаем).
+  Future<void> release(String id) async {
+    final current = await read();
+    if (current == null || current.id != id) return;
+    try {
+      await file.delete();
+    } catch (_) {}
+  }
+}
+
+/// Содержимое app-location.json: где искать работающее приложение.
+class AppLocation {
+  const AppLocation({
+    required this.supportDir,
+    required this.syncDir,
+    required this.prefsFile,
+    required this.prefsPrefix,
+    required this.exe,
+    required this.pid,
+    required this.tsMs,
+  });
+
+  final String supportDir;
+  final String syncDir;
+  final String prefsFile;
+  final String prefsPrefix;
+  final String exe;
+  final int pid;
+  final int tsMs;
+
+  Map<String, dynamic> toJson() => {
+    'v': cliSyncProtocolVersion,
+    'support_dir': supportDir,
+    'sync_dir': syncDir,
+    'prefs_file': prefsFile,
+    'prefs_prefix': prefsPrefix,
+    'exe': exe,
+    'pid': pid,
+    'ts': tsMs,
+  };
 }

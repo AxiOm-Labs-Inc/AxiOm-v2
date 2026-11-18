@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiddify/features/cli_sync/cli_sync_protocol.dart';
 
+const idA = '0b4e28ba-2fa1-4d2e-9f6b-0a1b2c3d4e5f';
+const idB = '1c5f39cb-3ab2-4e3f-8a7c-1b2c3d4e5f60';
+
 void main() {
   group('ServerSelection', () {
     test('encodes and decodes the app prefs triple', () {
@@ -15,7 +18,7 @@ void main() {
     test('auto drops protocol and transport in --select', () {
       const s = ServerSelection(c: autoCountryKey, p: 'vless', t: 'tcp');
       expect(s.isAuto, isTrue);
-      expect(s.toSelectArg(), '__auto__||');
+      expect(s.toSelectArg(), '__auto__');
     });
 
     test('missing p/t default to empty, invalid input is rejected', () {
@@ -98,17 +101,27 @@ void main() {
     });
   });
 
+  group('uuid4', () {
+    test('only uuid4 ids are accepted', () {
+      expect(isUuid4('1b4e28ba-2fa1-4d2e-9f6b-0a1b2c3d4e5f'), isTrue);
+      expect(isUuid4('1B4E28BA-2FA1-4D2E-9F6B-0A1B2C3D4E5F'), isTrue);
+      expect(isUuid4('1b4e28ba-2fa1-1d2e-9f6b-0a1b2c3d4e5f'), isFalse, reason: 'version 1');
+      expect(isUuid4('id-1'), isFalse);
+      expect(isUuid4(''), isFalse);
+    });
+  });
+
   group('ControlCommand', () {
     String encode(Map<String, dynamic> m) => jsonEncode(m);
 
     test('parses disconnect and select', () {
-      final d = ControlCommand.tryParse(encode({'v': 1, 'id': 'a', 'ts': 5, 'cmd': 'disconnect'}))!;
+      final d = ControlCommand.tryParse(encode({'v': 1, 'id': idA, 'ts': 5, 'cmd': 'disconnect'}))!;
       expect(d.cmd, ControlCmd.disconnect);
       expect(d.selection, isNull);
       final s = ControlCommand.tryParse(
         encode({
           'v': 1,
-          'id': 'b',
+          'id': idB,
           'ts': 6,
           'cmd': 'select',
           'selection': {'c': 'Germany', 'p': 'vless', 't': 'tcp'},
@@ -122,11 +135,12 @@ void main() {
     test('rejects malformed commands', () {
       expect(ControlCommand.tryParse(''), isNull);
       expect(ControlCommand.tryParse('{"v":1,"id":"a","ts":5,'), isNull);
-      expect(ControlCommand.tryParse(encode({'v': 2, 'id': 'a', 'ts': 5, 'cmd': 'disconnect'})), isNull);
+      expect(ControlCommand.tryParse(encode({'v': 2, 'id': idA, 'ts': 5, 'cmd': 'disconnect'})), isNull);
       expect(ControlCommand.tryParse(encode({'v': 1, 'id': '', 'ts': 5, 'cmd': 'disconnect'})), isNull);
-      expect(ControlCommand.tryParse(encode({'v': 1, 'id': 'a', 'ts': '5', 'cmd': 'disconnect'})), isNull);
-      expect(ControlCommand.tryParse(encode({'v': 1, 'id': 'a', 'ts': 5, 'cmd': 'connect'})), isNull);
-      expect(ControlCommand.tryParse(encode({'v': 1, 'id': 'a', 'ts': 5, 'cmd': 'select'})), isNull);
+      expect(ControlCommand.tryParse(encode({'v': 1, 'id': 'a', 'ts': 5, 'cmd': 'disconnect'})), isNull, reason: 'not uuid4');
+      expect(ControlCommand.tryParse(encode({'v': 1, 'id': idA, 'ts': '5', 'cmd': 'disconnect'})), isNull);
+      expect(ControlCommand.tryParse(encode({'v': 1, 'id': idA, 'ts': 5, 'cmd': 'connect'})), isNull);
+      expect(ControlCommand.tryParse(encode({'v': 1, 'id': idA, 'ts': 5, 'cmd': 'select'})), isNull);
       expect(ControlCommand.tryParse('[1,2]'), isNull);
     });
   });
@@ -158,6 +172,36 @@ void main() {
       }
       expect(tracker.hasSeen('1'), isFalse);
       expect(tracker.hasSeen('4'), isTrue);
+    });
+  });
+
+  test('ControlAck parse is strict', () {
+    expect(ControlAck.tryParse(jsonEncode(const ControlAck(id: idA, ok: true, tsMs: 9).toJson()))!.id, idA);
+    expect(ControlAck.tryParse('{"v":1,"id":"$idA","ok":"false","ts":9}'), isNull, reason: 'ok must be bool');
+    expect(ControlAck.tryParse('{"v":1,"id":"x","ok":true,"ts":9}'), isNull);
+    expect(ControlAck.tryParse('{"v":1,"id":"$idA","ok":true,"ts":9.5}'), isNull);
+    expect(ControlAck.tryParse('{"v":2,"id":"$idA","ok":true,"ts":9}'), isNull);
+  });
+
+  test('app-location JSON', () {
+    const loc = AppLocation(
+      supportDir: '/s',
+      syncDir: '/s/cli-sync',
+      prefsFile: '/s/shared_preferences.json',
+      prefsPrefix: 'flutter.',
+      exe: '/opt/AxiOm/hiddify',
+      pid: 3,
+      tsMs: 4,
+    );
+    expect(loc.toJson(), {
+      'v': 1,
+      'support_dir': '/s',
+      'sync_dir': '/s/cli-sync',
+      'prefs_file': '/s/shared_preferences.json',
+      'prefs_prefix': 'flutter.',
+      'exe': '/opt/AxiOm/hiddify',
+      'pid': 3,
+      'ts': 4,
     });
   });
 
