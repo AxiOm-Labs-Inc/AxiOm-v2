@@ -229,10 +229,11 @@ class CliSyncService {
     } catch (e) {
       error = '$e';
     } finally {
+      // Сначала новое состояние, потом ответ: получив ответ, CLI уже видит, что VPN выключен/сервер сменён.
+      await writeState(force: true);
       final ack = ControlAck(id: command.id, ok: error == null, error: error, tsMs: now);
       if (!await files.writeAck(ack)) _log('cannot write ack ${command.id}');
       _executing = false;
-      await writeState(force: true);
     }
   }
 
