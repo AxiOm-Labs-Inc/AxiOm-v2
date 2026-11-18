@@ -218,8 +218,6 @@ class _AppEngineAdapter implements AppEngineAdapter {
     }
     return 'ядро приложения не остановилось за 10 с (статус или порт $port)';
   }
-
-  }
 }
 
 class CliBridge with AppLogger {
