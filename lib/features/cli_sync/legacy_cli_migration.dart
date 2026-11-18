@@ -1,10 +1,11 @@
 // Замена старого Go-CLI AxiOm (cli-v0.0.x, папка, которую пользователь распаковал сам) на SBX.
 //
 // Раз на версию приложения: ищем `axiom`/`axiom.exe` в PATH и в типичных папках распаковки,
-// пропускаем CLI самого установщика, подтверждаем старый CLI по выводу `<bin> version`
-// ("axiom-cli 0.0.3 (linux/amd64)"; SBX печатает "axiom 1.3.0") и подменяем файл на SBX:
-// источник — CLI установщика, иначе последний релиз SBX с проверкой sha256 из GitHub API.
-// Остальные файлы старого CLI (axiom-core.*, libcronet.dll, VERSION) не трогаем.
+// пропускаем CLI самого установщика, подтверждаем старый CLI строго: `<bin> version` завершился с кодом 0
+// и первая строка stdout — `axiom-cli X.Y.Z`. Подменяем файл на SBX ≥ 1.4.0: источник — CLI установщика
+// (проверяется его `version`), иначе релиз SBX ≥ 1.4.0 с проверкой sha256 из GitHub API. После замены
+// новый файл обязан ответить `axiom X.Y.Z` ≥ 1.4.0, иначе возвращается копия старого
+// (`<имя>.old-<время>`). Остальные файлы старого CLI (axiom-core.*, libcronet.dll, VERSION) не трогаем.
 // Без зависимостей от Flutter: платформа, окружение, запуск процессов и загрузка передаются явно.
 
 import 'dart:async';
@@ -14,14 +15,12 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:hiddify/features/cli_sync/cli_process.dart';
+import 'package:hiddify/features/cli_sync/cli_version.dart';
 import 'package:path/path.dart' as p;
 
 const sbxReleaseApi = 'https://api.github.com/repos/Xenon-Tetraoxide/SBX-VPN-Client/releases/latest';
 
 String sbxAssetName({required bool isWindows}) => isWindows ? 'sbx-windows-amd64.exe' : 'sbx.py';
-
-/// Вывод `axiom version` старого Go-CLI.
-bool isLegacyCliVersionOutput(String output) => stripAnsi(output).toLowerCase().contains('axiom-cli');
 
 p.Context _ctx(bool isWindows) => isWindows ? p.windows : p.posix;
 
@@ -86,45 +85,65 @@ Future<List<String>> existingLegacyCandidates(
   return result;
 }
 
-/// Подменить [target] файлом [source].
+/// Подменить [target] файлом [source] и проверить, что это SBX ≥ 1.4.0 (`<target> version`).
 ///
-/// Windows: старый файл переименовывается в `<target>.old` (так можно и с запущенным exe),
-/// затем копируется новый; при ошибке старый возвращается на место.
-/// Linux: копия рядом, chmod 755, атомарный rename поверх.
-Future<void> replaceCliBinary(String target, String source, {required bool isWindows}) async {
-  if (isWindows) {
-    final old = File('$target.old');
-    if (await old.exists()) {
-      try {
-        await old.delete();
-      } catch (_) {
-        // прежний .old ещё запущен — rename ниже тогда не пройдёт и сообщит об ошибке
-      }
+/// Копия старого файла — `<target>.old-<время>` (имя не занято, чужие файлы не трогаются).
+/// Windows: старый файл переименовывается в копию (так можно и с запущенным exe), новый копируется на место.
+/// Linux: копия старого (`cp -p`), новый — рядом, chmod 755 и атомарный rename поверх.
+/// Любая ошибка или неверная версия — старый файл возвращается на место, исключение наружу.
+/// Linux: копия при успехе удаляется; Windows: остаётся (старый exe может ещё работать).
+Future<void> replaceCliBinary(
+  String target,
+  String source, {
+  required bool isWindows,
+  CliProcessRunner run = runCliProcess,
+  int Function()? clock,
+}) async {
+  final stamp = (clock ?? () => DateTime.now().millisecondsSinceEpoch)();
+  var backup = File('$target.old-$stamp');
+  for (var i = 1; await backup.exists(); i++) {
+    backup = File('$target.old-$stamp-$i');
+  }
+  Future<void> verify() async {
+    final result = await run(target, const ['version'], timeout: const Duration(seconds: 10));
+    if (!isCompatibleSbxRun(result)) {
+      throw StateError('новый CLI не SBX ≥ 1.4.0: ${result.message}');
     }
-    await File(target).rename(old.path);
+  }
+
+  if (isWindows) {
+    await File(target).rename(backup.path);
     try {
       await File(source).copy(target);
+      await verify();
     } catch (_) {
       try {
         if (await File(target).exists()) await File(target).delete();
       } catch (_) {}
-      await old.rename(target);
+      await backup.rename(target);
       rethrow;
     }
     return;
   }
+  final copy = await Process.run('cp', ['-p', target, backup.path]);
+  if (copy.exitCode != 0) throw FileSystemException('cp -p: ${copy.stderr}', target);
   final tmp = File('$target.axiom-new.$pid');
   try {
     await File(source).copy(tmp.path);
     final chmod = await Process.run('chmod', ['755', tmp.path]);
     if (chmod.exitCode != 0) throw FileSystemException('chmod 755: ${chmod.stderr}', tmp.path);
     await tmp.rename(target);
+    await verify();
   } catch (_) {
     try {
       if (await tmp.exists()) await tmp.delete();
     } catch (_) {}
+    await backup.rename(target);
     rethrow;
   }
+  try {
+    await backup.delete();
+  } catch (_) {}
 }
 
 /// Ассет релиза из ответа GitHub API: (адрес загрузки, sha256 hex) или null,
@@ -167,12 +186,16 @@ Future<List<int>> httpFetchBytes(Uri url) async {
   }
 }
 
-/// Последний SBX из релиза: проверенные по sha256 байты.
+/// Последний SBX из релиза: проверенные по sha256 байты. Релиз старше 1.4.0 не годится.
 Future<List<int>> downloadLatestSbx({required bool isWindows, BytesFetcher fetch = httpFetchBytes}) async {
   final name = sbxAssetName(isWindows: isWindows);
   final release = jsonDecode(utf8.decode(await fetch(Uri.parse(sbxReleaseApi))));
+  final tag = release is Map && release['tag_name'] is String ? release['tag_name'] as String : '';
+  if (!isSyncCompatible(parseReleaseTag(tag))) {
+    throw StateError('последний релиз SBX ($tag) старше 1.4.0 — синхронизации с приложением в нём нет');
+  }
   final asset = pickReleaseAsset(release, name);
-  if (asset == null) throw StateError('в последнем релизе SBX нет $name с sha256');
+  if (asset == null) throw StateError('в релизе SBX $tag нет $name с sha256');
   final bytes = await fetch(Uri.parse(asset.url));
   if (!sha256Matches(bytes, asset.sha256)) throw StateError('sha256 $name не совпал с релизом');
   return bytes;
@@ -184,11 +207,17 @@ class LegacyCliReport {
   final results = <String, LegacyOutcome>{};
   final errors = <String, String>{};
 
-  /// Не удалось получить SBX (сеть) — проверку стоит повторить при следующем запуске.
-  bool transientFailure = false;
+  /// Хоть одна замена не удалась (или SBX не получить) — повторить при следующем запуске.
+  bool get hasFailures => results.values.contains(LegacyOutcome.failed);
+
+  /// Заменённые на SBX пути — ими можно пользоваться как CLI.
+  List<String> get replaced => [
+    for (final e in results.entries)
+      if (e.value == LegacyOutcome.replaced) e.key,
+  ];
 
   @override
-  String toString() => 'LegacyCliReport(results: $results, errors: $errors, transient: $transientFailure)';
+  String toString() => 'LegacyCliReport(results: $results, errors: $errors)';
 }
 
 /// Найти старые CLI и заменить их SBX.
@@ -201,6 +230,7 @@ Future<LegacyCliReport> migrateLegacyCli({
   CliProcessRunner run = runCliProcess,
   BytesFetcher fetch = httpFetchBytes,
   List<String>? candidates,
+  int Function()? clock,
 }) async {
   final report = LegacyCliReport();
   final found = await existingLegacyCandidates(
@@ -210,8 +240,7 @@ Future<LegacyCliReport> migrateLegacyCli({
   );
   final legacy = <String>[];
   for (final path in found) {
-    final result = await run(path, const ['version'], timeout: const Duration(seconds: 10));
-    if (isLegacyCliVersionOutput('${result.stdout}\n${result.stderr}')) {
+    if (isLegacyCliRun(await run(path, const ['version'], timeout: const Duration(seconds: 10)))) {
       legacy.add(path);
     } else {
       report.results[path] = LegacyOutcome.notLegacy;
@@ -221,7 +250,8 @@ Future<LegacyCliReport> migrateLegacyCli({
 
   String? source;
   for (final path in installerSources) {
-    if (await File(path).exists()) {
+    if (!await File(path).exists()) continue;
+    if (isCompatibleSbxRun(await run(path, const ['version'], timeout: const Duration(seconds: 10)))) {
       source = await resolvePath(path);
       break;
     }
@@ -231,14 +261,13 @@ Future<LegacyCliReport> migrateLegacyCli({
     try {
       final bytes = await downloadLatestSbx(isWindows: isWindows, fetch: fetch);
       await tempDir.create(recursive: true);
-      downloaded = File(_ctx(Platform.isWindows).join(tempDir.path, 'axiom-sbx-$pid-${sbxAssetName(isWindows: isWindows)}'));
+      downloaded = File(p.join(tempDir.path, 'axiom-sbx-$pid-${sbxAssetName(isWindows: isWindows)}'));
       await downloaded.writeAsBytes(bytes, flush: true);
       source = downloaded.path;
     } catch (e) {
-      report.transientFailure = true;
       for (final path in legacy) {
         report.results[path] = LegacyOutcome.failed;
-        report.errors[path] = 'загрузка SBX: $e';
+        report.errors[path] = 'SBX не получен: $e';
       }
       return report;
     }
@@ -246,7 +275,7 @@ Future<LegacyCliReport> migrateLegacyCli({
   try {
     for (final path in legacy) {
       try {
-        await replaceCliBinary(path, source, isWindows: isWindows);
+        await replaceCliBinary(path, source, isWindows: isWindows, run: run, clock: clock);
         report.results[path] = LegacyOutcome.replaced;
       } catch (e) {
         report.results[path] = LegacyOutcome.failed;

@@ -24,7 +24,8 @@ void main() {
     return file.path;
   }
 
-  /// Подставной запуск: «старый CLI» узнаётся по содержимому файла.
+  /// Подставной запуск `version`: ответ зависит от содержимого файла.
+  /// LEGACY… — старый Go-CLI, SBX14… — SBX 1.4.0, SBX13… — SBX 1.3.0, остальное — ошибка запуска.
   Future<CliRunResult> fakeRun(String exe, List<String> args, {Duration timeout = const Duration(seconds: 30)}) async {
     expect(args, ['version']);
     expect(timeout, const Duration(seconds: 10));
@@ -32,7 +33,9 @@ void main() {
     if (content.startsWith('LEGACY')) {
       return const CliRunResult(exitCode: 0, stdout: 'axiom-cli 0.0.3 (linux/amd64)\n', stderr: '');
     }
-    return const CliRunResult(exitCode: 0, stdout: 'axiom 1.3.0\n', stderr: '');
+    if (content.startsWith('SBX14')) return const CliRunResult(exitCode: 0, stdout: 'axiom 1.4.0\n', stderr: '');
+    if (content.startsWith('SBX13')) return const CliRunResult(exitCode: 0, stdout: 'axiom 1.3.0\n', stderr: '');
+    return CliRunResult(exitCode: -1, stdout: '', stderr: 'cannot run $exe: axiom-cli');
   }
 
   group('candidates', () {
@@ -97,13 +100,6 @@ void main() {
     }
   });
 
-  test('version output of the old Go CLI', () {
-    expect(isLegacyCliVersionOutput('axiom-cli 0.0.3 (linux/amd64)'), isTrue);
-    expect(isLegacyCliVersionOutput('\x1B[1mAxiOm-CLI\x1B[0m 0.0.2 (windows/amd64)'), isTrue);
-    expect(isLegacyCliVersionOutput('axiom 1.3.0'), isFalse);
-    expect(isLegacyCliVersionOutput(''), isFalse);
-  });
-
   group('release asset', () {
     final release = {
       'tag_name': 'v1.3.0',
@@ -130,43 +126,53 @@ void main() {
   });
 
   group('replaceCliBinary', () {
-    test('replaces the file (Windows: keeps .old; Linux: mode 755, atomic)', () async {
+    List<String> names(String dir) => Directory(dir).listSync().map((e) => p.basename(e.path)).toList()..sort();
+
+    test('replaces the file and verifies the new CLI (Windows keeps a unique backup, Linux mode 755)', () async {
       final target = await makeFile(p.join('axiom-cli', binName), 'LEGACY');
-      final source = await makeFile('new-sbx', 'NEW');
-      await replaceCliBinary(target, source, isWindows: isWindows);
-      expect(await File(target).readAsString(), 'NEW');
+      final source = await makeFile('new-sbx', 'SBX14');
+      await replaceCliBinary(target, source, isWindows: isWindows, run: fakeRun, clock: () => 1000);
+      expect(await File(target).readAsString(), 'SBX14');
       if (isWindows) {
-        expect(await File('$target.old').readAsString(), 'LEGACY');
+        expect(await File('$target.old-1000').readAsString(), 'LEGACY');
       } else {
         expect((await File(target).stat()).mode & 0x1FF, 0x1ED); // 0755
-        expect(Directory(p.dirname(target)).listSync().map((e) => p.basename(e.path)), ['axiom']);
+        expect(names(p.dirname(target)), ['axiom'], reason: 'backup and temp removed');
       }
     });
 
-    test('Windows: a stale .old from the last update is replaced', () async {
-      if (!isWindows) return;
+    test('an existing backup is never overwritten', () async {
       final target = await makeFile(p.join('axiom-cli', binName), 'LEGACY2');
-      await makeFile(p.join('axiom-cli', '$binName.old'), 'LEGACY1');
-      final source = await makeFile('new-sbx', 'NEW');
-      await replaceCliBinary(target, source, isWindows: true);
-      expect(await File(target).readAsString(), 'NEW');
-      expect(await File('$target.old').readAsString(), 'LEGACY2');
+      await makeFile(p.join('axiom-cli', '$binName.old-1000'), 'SOMEONE ELSE');
+      final source = await makeFile('new-sbx', 'SBX14');
+      await replaceCliBinary(target, source, isWindows: isWindows, run: fakeRun, clock: () => 1000);
+      expect(await File('$target.old-1000').readAsString(), 'SOMEONE ELSE');
+      if (isWindows) expect(await File('$target.old-1000-1').readAsString(), 'LEGACY2');
     });
 
     test('a failed copy leaves the old CLI in place', () async {
       final target = await makeFile(p.join('axiom-cli', binName), 'LEGACY');
       final source = p.join(tmp.path, 'missing-source');
-      await expectLater(replaceCliBinary(target, source, isWindows: isWindows), throwsA(anything));
+      await expectLater(replaceCliBinary(target, source, isWindows: isWindows, run: fakeRun), throwsA(anything));
       expect(await File(target).readAsString(), 'LEGACY');
-      expect(Directory(p.dirname(target)).listSync().map((e) => p.basename(e.path)), [binName]);
+      expect(names(p.dirname(target)), [binName]);
+    });
+
+    test('a replacement that is not SBX >= 1.4.0 is rolled back', () async {
+      final target = await makeFile(p.join('axiom-cli', binName), 'LEGACY');
+      final source = await makeFile('old-sbx', 'SBX13');
+      await expectLater(replaceCliBinary(target, source, isWindows: isWindows, run: fakeRun), throwsA(anything));
+      expect(await File(target).readAsString(), 'LEGACY');
+      expect(names(p.dirname(target)), [binName]);
     });
   });
 
   group('migrateLegacyCli', () {
     test('replaces only the old Go CLI, from the installer CLI', () async {
-      final installer = await makeFile(p.join('app', 'cli', binName), 'NEW-FROM-INSTALLER');
+      final installer = await makeFile(p.join('app', 'cli', binName), 'SBX14-FROM-INSTALLER');
       final legacy = await makeFile(p.join('axiom-cli', binName), 'LEGACY');
-      final sbx = await makeFile(p.join('elsewhere', binName), 'SBX');
+      final sbx = await makeFile(p.join('elsewhere', binName), 'SBX13');
+      final broken = await makeFile(p.join('broken', binName), 'garbage');
       final report = await migrateLegacyCli(
         isWindows: isWindows,
         env: const {},
@@ -174,17 +180,19 @@ void main() {
         installerSources: [installer],
         tempDir: tmp,
         run: fakeRun,
-        fetch: (_) => fail('must not download when the installer CLI exists'),
-        candidates: [installer, legacy, sbx],
+        fetch: (_) => fail('must not download when the installer CLI is SBX >= 1.4.0'),
+        candidates: [installer, legacy, sbx, broken],
       );
-      expect(report.transientFailure, isFalse);
+      expect(report.hasFailures, isFalse);
       expect(report.results, {
         await File(legacy).resolveSymbolicLinks(): LegacyOutcome.replaced,
         await File(sbx).resolveSymbolicLinks(): LegacyOutcome.notLegacy,
+        await File(broken).resolveSymbolicLinks(): LegacyOutcome.notLegacy,
       });
-      expect(await File(legacy).readAsString(), 'NEW-FROM-INSTALLER');
-      expect(await File(sbx).readAsString(), 'SBX');
-      expect(await File(installer).readAsString(), 'NEW-FROM-INSTALLER');
+      expect(report.replaced, [await File(legacy).resolveSymbolicLinks()]);
+      expect(await File(legacy).readAsString(), 'SBX14-FROM-INSTALLER');
+      expect(await File(sbx).readAsString(), 'SBX13');
+      expect(await File(broken).readAsString(), 'garbage', reason: 'a failed launch is never "old CLI"');
     });
 
     test('nothing found — nothing done', () async {
@@ -199,15 +207,16 @@ void main() {
         candidates: [p.join(tmp.path, 'none', binName)],
       );
       expect(report.results, isEmpty);
-      expect(report.transientFailure, isFalse);
+      expect(report.hasFailures, isFalse);
     });
 
-    Future<List<int>> Function(Uri) releaseFetcher(List<int> payload, {String? digest}) {
+    Future<List<int>> Function(Uri) releaseFetcher(List<int> payload, {String? digest, String tag = 'v1.4.0'}) {
       final asset = sbxAssetName(isWindows: isWindows);
       return (url) async {
         if (url.toString() == sbxReleaseApi) {
           return utf8.encode(
             jsonEncode({
+              'tag_name': tag,
               'assets': [
                 {
                   'name': asset,
@@ -223,21 +232,22 @@ void main() {
       };
     }
 
-    test('without the installer CLI downloads SBX and verifies sha256', () async {
+    test('installer CLI older than 1.4.0 → downloads SBX >= 1.4.0 and verifies sha256', () async {
+      final installer = await makeFile(p.join('app', 'cli', binName), 'SBX13');
       final legacy = await makeFile(p.join('axiom-cli', binName), 'LEGACY');
       final report = await migrateLegacyCli(
         isWindows: isWindows,
         env: const {},
-        installerPaths: const [],
-        installerSources: [p.join(tmp.path, 'no-installer', binName)],
+        installerPaths: [installer],
+        installerSources: [installer, p.join(tmp.path, 'no-installer', binName)],
         tempDir: Directory(p.join(tmp.path, 'dl')),
         run: fakeRun,
-        fetch: releaseFetcher(utf8.encode('DOWNLOADED')),
+        fetch: releaseFetcher(utf8.encode('SBX14 DOWNLOADED')),
         candidates: [legacy],
       );
-      expect(report.transientFailure, isFalse);
+      expect(report.hasFailures, isFalse);
       expect(report.results.values, [LegacyOutcome.replaced]);
-      expect(await File(legacy).readAsString(), 'DOWNLOADED');
+      expect(await File(legacy).readAsString(), 'SBX14 DOWNLOADED');
       expect(Directory(p.join(tmp.path, 'dl')).listSync(), isEmpty, reason: 'temp download removed');
     });
 
@@ -250,11 +260,53 @@ void main() {
         installerSources: const [],
         tempDir: tmp,
         run: fakeRun,
-        fetch: releaseFetcher(utf8.encode('EVIL'), digest: 'c' * 64),
+        fetch: releaseFetcher(utf8.encode('SBX14 EVIL'), digest: 'c' * 64),
         candidates: [legacy],
       );
-      expect(report.transientFailure, isTrue);
+      expect(report.hasFailures, isTrue);
       expect(report.results.values, [LegacyOutcome.failed]);
+      expect(await File(legacy).readAsString(), 'LEGACY');
+    });
+
+    test('latest SBX release older than 1.4.0 is not used', () async {
+      final legacy = await makeFile(p.join('axiom-cli', binName), 'LEGACY');
+      final report = await migrateLegacyCli(
+        isWindows: isWindows,
+        env: const {},
+        installerPaths: const [],
+        installerSources: const [],
+        tempDir: tmp,
+        run: fakeRun,
+        fetch: releaseFetcher(utf8.encode('SBX13'), tag: 'v1.3.0'),
+        candidates: [legacy],
+      );
+      expect(report.hasFailures, isTrue);
+      expect(report.errors.values.single, contains('1.4.0'));
+      expect(await File(legacy).readAsString(), 'LEGACY');
+    });
+
+    test('a failed replacement is reported (marker not saved, retried next start)', () async {
+      final installer = await makeFile(p.join('app', 'cli', binName), 'SBX14');
+      final legacy = await makeFile(p.join('axiom-cli', binName), 'LEGACY');
+      // Источник «пропадает» между проверкой и копированием — копия не удаётся.
+      var calls = 0;
+      Future<CliRunResult> run(String exe, List<String> args, {Duration timeout = const Duration(seconds: 30)}) async {
+        final result = await fakeRun(exe, args, timeout: timeout);
+        if (exe == installer && ++calls == 1) await File(installer).delete();
+        return result;
+      }
+
+      final report = await migrateLegacyCli(
+        isWindows: isWindows,
+        env: const {},
+        installerPaths: [installer],
+        installerSources: [installer],
+        tempDir: tmp,
+        run: run,
+        fetch: (_) => fail('no download'),
+        candidates: [legacy],
+      );
+      expect(report.hasFailures, isTrue);
       expect(await File(legacy).readAsString(), 'LEGACY');
     });
 
@@ -268,7 +320,7 @@ void main() {
 
         final old = await script(p.join('home', 'axiom-cli', 'axiom'), 'axiom-cli 0.0.3 (linux/amd64)');
         final sbx = await script(p.join('bin', 'axiom'), 'axiom 1.3.0');
-        final source = await makeFile(p.join('usr', 'lib', 'axiom', 'cli', 'axiom'), '#!/bin/sh\necho "axiom 1.3.0"\n');
+        final source = await script(p.join('usr', 'lib', 'axiom', 'cli', 'axiom'), 'axiom 1.4.0');
         final report = await migrateLegacyCli(
           isWindows: false,
           env: {'PATH': p.join(tmp.path, 'bin'), 'HOME': p.join(tmp.path, 'home')},
@@ -279,7 +331,7 @@ void main() {
         );
         expect(report.results, {old: LegacyOutcome.replaced, sbx: LegacyOutcome.notLegacy});
         final after = await Process.run(old, ['version']);
-        expect(after.stdout, contains('axiom 1.3.0'));
+        expect(after.stdout, contains('axiom 1.4.0'));
       });
     }
   });
