@@ -14,7 +14,7 @@ Compression=lzma
 SolidCompression=yes
 SetupIconFile={{SETUP_ICON_FILE}}
 WizardStyle=modern
-PrivilegesRequired=admin
+PrivilegesRequired={{PRIVILEGES_REQUIRED}}
 ChangesEnvironment=yes
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
@@ -61,7 +61,7 @@ Name: "{autoprograms}\\{{DISPLAY_NAME}}"; Filename: "{app}\\{{EXECUTABLE_NAME}}"
 Name: "{autodesktop}\\{{DISPLAY_NAME}}"; Filename: "{app}\\{{EXECUTABLE_NAME}}"; Tasks: desktopicon
 Name: "{userstartup}\\{{DISPLAY_NAME}}"; Filename: "{app}\\{{EXECUTABLE_NAME}}"; WorkingDir: "{app}"; Tasks: launchAtStartup
 [Run]
-Filename: "{app}\\{{EXECUTABLE_NAME}}"; Description: "{cm:LaunchProgram,{{DISPLAY_NAME}}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\\{{EXECUTABLE_NAME}}"; Description: "{cm:LaunchProgram,{{DISPLAY_NAME}}}"; Flags: {% if PRIVILEGES_REQUIRED == 'admin' %}runascurrentuser{% endif %} nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{userappdata}\Hiddify"
@@ -69,16 +69,49 @@ Type: filesandordirs; Name: "{app}\cli"
 
 [Code]
 const
-  EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  MachineEnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  UserEnvironmentKey = 'Environment';
   CliAsset = 'sbx-windows-amd64.exe';
   CliUrl = 'https://github.com/Xenon-Tetraoxide/SBX-VPN-Client/releases/latest/download/';
   MoveReplaceExisting = 1;
 
 var
-  CliNeedsRestart: Boolean;
+  CliNeedsRestart, CliDownloaded: Boolean;
+  DownloadPage: TDownloadWizardPage;
 
 function MoveFileEx(ExistingFile, NewFile: String; Flags: LongWord): Boolean;
   external 'MoveFileExW@kernel32.dll stdcall setuponly';
+
+function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
+begin
+  Result := True;
+end;
+
+procedure InitializeWizard();
+begin
+  DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing), SetupMessage(msgPreparingDesc), @OnDownloadProgress);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = wpReady) and not WizardSilent then
+  begin
+    DownloadPage.Clear;
+    DownloadPage.Add(CliUrl + CliAsset, CliAsset, '');
+    DownloadPage.Show;
+    try
+      try
+        DownloadPage.Download;
+        CliDownloaded := True;
+      except
+        Log('AxiOm CLI download failed or was cancelled: ' + GetExceptionMessage);
+      end;
+    finally
+      DownloadPage.Hide;
+    end;
+  end;
+end;
 
 function InitializeSetup(): Boolean;
 var
@@ -106,13 +139,24 @@ end;
 function UpdateCliPath(AddEntry: Boolean): Boolean;
 var
   CliDir, PathValue, Entry: String;
-  EntryStart, EntryEnd: Integer;
+  EntryStart, EntryEnd, RootKey: Integer;
+  EnvironmentKey: String;
 begin
   CliDir := ExpandConstant('{app}\cli');
-  Result := True;
-  if not RegQueryStringValue(HKLM, EnvironmentKey, 'Path', PathValue) then
+  if IsAdminInstallMode then
   begin
-    if RegValueExists(HKLM, EnvironmentKey, 'Path') then
+    RootKey := HKLM;
+    EnvironmentKey := MachineEnvironmentKey;
+  end
+  else
+  begin
+    RootKey := HKCU;
+    EnvironmentKey := UserEnvironmentKey;
+  end;
+  Result := True;
+  if not RegQueryStringValue(RootKey, EnvironmentKey, 'Path', PathValue) then
+  begin
+    if RegValueExists(RootKey, EnvironmentKey, 'Path') then
       Result := False;
     if not Result or not AddEntry then
       Exit;
@@ -137,7 +181,7 @@ begin
         if (EntryEnd > Length(PathValue)) and (EntryStart > 1) then
           EntryStart := EntryStart - 1;
         Delete(PathValue, EntryStart, EntryEnd - EntryStart + 1);
-        Result := RegWriteExpandStringValue(HKLM, EnvironmentKey, 'Path', PathValue);
+        Result := RegWriteExpandStringValue(RootKey, EnvironmentKey, 'Path', PathValue);
       end;
       Exit;
     end;
@@ -148,16 +192,21 @@ begin
   begin
     if (PathValue <> '') and (Copy(PathValue, Length(PathValue), 1) <> ';') then
       PathValue := PathValue + ';';
-    Result := RegWriteExpandStringValue(HKLM, EnvironmentKey, 'Path', PathValue + CliDir);
+    Result := RegWriteExpandStringValue(RootKey, EnvironmentKey, 'Path', PathValue + CliDir);
   end;
 end;
 
 procedure InstallCli();
 var
-  CliDir, Destination, StagedFile, ErrorMessage: String;
+  CliDir, Destination, StagedFile, OldFile, ErrorMessage: String;
 begin
   try
-    DownloadTemporaryFile(CliUrl + CliAsset, CliAsset, '', nil);
+    if not CliDownloaded then
+    begin
+      if not WizardSilent then
+        RaiseException('the download was not completed');
+      DownloadTemporaryFile(CliUrl + CliAsset, CliAsset, '', nil);
+    end;
     CliDir := ExpandConstant('{app}\cli');
     Destination := CliDir + '\axiom.exe';
     StagedFile := Destination + '.new';
@@ -172,11 +221,25 @@ begin
         DeleteFile(StagedFile);
         RaiseException('Could not install ' + Destination);
       end;
-      RestartReplace(StagedFile, Destination);
-      CliNeedsRestart := True;
+      OldFile := Destination + '.old';
+      DeleteFile(OldFile);
+      if RenameFile(Destination, OldFile) then
+      begin
+        if not RenameFile(StagedFile, Destination) then
+        begin
+          RenameFile(OldFile, Destination);
+          RestartReplace(StagedFile, Destination);
+          CliNeedsRestart := True;
+        end;
+      end
+      else
+      begin
+        RestartReplace(StagedFile, Destination);
+        CliNeedsRestart := True;
+      end;
     end;
     if not UpdateCliPath(True) then
-      RaiseException('Could not add ' + CliDir + ' to the system PATH');
+      RaiseException('Could not add ' + CliDir + ' to PATH');
   except
     ErrorMessage := 'Could not finish setting up AxiOm CLI (SBX): ' + GetExceptionMessage;
     Log(ErrorMessage);
@@ -198,9 +261,27 @@ begin
   Result := CliNeedsRestart;
 end;
 
+procedure RunCliUninstall();
+var
+  CliPath: String;
+  ResultCode: Integer;
+begin
+  CliPath := ExpandConstant('{app}\cli\axiom.exe');
+  if not FileExists(CliPath) then
+    Exit;
+  StringChangeEx(CliPath, #39, #39#39, True);
+  Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -Command "$p = Start-Process -FilePath ' + #39 + CliPath + #39 +
+    ' -ArgumentList ''uninstall'' -WindowStyle Hidden -PassThru; if (-not $p.WaitForExit(30000)) { $p.Kill() }"',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
+  begin
+    RunCliUninstall();
     if not UpdateCliPath(False) then
-      Log('Could not remove AxiOm CLI from the system PATH');
+      Log('Could not remove AxiOm CLI from PATH');
+  end;
 end;

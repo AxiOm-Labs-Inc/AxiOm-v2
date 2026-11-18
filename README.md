@@ -24,6 +24,8 @@ axiom connect
 axiom update
 ```
 
+In the AxiOm CLI, `axiom update` updates the CLI itself; update subscriptions with `axiom sub update`. Uninstalling AxiOm also removes the CLI's autostart tasks.
+
 With AppImage, use `./AxiOm.AppImage cli <command>` instead; it downloads the CLI on first use. If the download fails, the desktop app is still available.
 
 ## Build

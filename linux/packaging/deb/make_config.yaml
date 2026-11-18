@@ -39,7 +39,11 @@ postinstall_scripts:
         ln -sT "$cli_dir/axiom" /usr/bin/axiom || exit 1
       fi
     ); then
-      echo 'Warning: Could not install AxiOm CLI (SBX); continuing without updating the CLI.' >&2
+      if [ -e /usr/bin/axiom ] && [ "$(readlink /usr/bin/axiom)" != /usr/lib/axiom/cli/axiom ]; then
+        echo '/usr/bin/axiom принадлежит другой программе; CLI установлен в /usr/lib/axiom/cli/axiom' >&2
+      else
+        echo 'Warning: Could not install AxiOm CLI (SBX); continuing without updating the CLI.' >&2
+      fi
     fi
   - echo "Hiddify is ready to use :)"
 
@@ -50,6 +54,9 @@ postuninstall_scripts:
   - |
     case "${1:-}" in
       remove|purge)
+        if [ -x /usr/lib/axiom/cli/axiom ] && command -v python3 >/dev/null 2>&1; then
+          timeout 30 python3 /usr/lib/axiom/cli/axiom uninstall >/dev/null 2>&1 || true
+        fi
         if [ "$(readlink /usr/bin/axiom)" = /usr/lib/axiom/cli/axiom ]; then
           rm -f -- /usr/bin/axiom
         fi
