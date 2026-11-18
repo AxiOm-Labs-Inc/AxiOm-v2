@@ -707,6 +707,7 @@
   "cliSync": {
     "connectedViaCli": "Connected via AxiOm CLI",
     "notFound": "AxiOm CLI not found",
-    "commandFailed": "AxiOm CLI command failed: ${error}"
+    "commandFailed": "AxiOm CLI command failed: ${error}",
+    "startCancelled": "Start cancelled: the VPN was turned off"
   }
 }

@@ -28,6 +28,8 @@ import 'package:hiddify/features/cli_sync/server_selection_notifier.dart';
 import 'package:hiddify/features/connection/data/connection_data_providers.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
+import 'package:hiddify/features/profile/data/profile_data_providers.dart';
+import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
 import 'package:hiddify/features/proxy/active/active_proxy_notifier.dart';
 import 'package:hiddify/features/proxy/data/proxy_data_providers.dart';
 import 'package:hiddify/features/proxy/data/server_list_cache.dart';
@@ -101,14 +103,39 @@ class _AppEngineAdapter implements AppEngineAdapter {
   }
 
   @override
-  Future<void> persistSelection(ServerSelection selection, StillCurrent current) async {
-    if (!current()) return;
-    final notifier = _ref.read(serverSelectionProvider.notifier);
-    if (selection.isAuto) {
-      await notifier.update(c: autoCountryKey);
-    } else {
-      await notifier.set(selection);
+  Future<List<ServerOption>> loadOptions() async {
+    var group = _loadedGroup;
+    if (group == null && status == AppEngineStatus.connected) {
+      try {
+        group = (await _ref.read(proxyRepositoryProvider).watchProxies().first.timeout(const Duration(seconds: 3)))
+            .getOrElse((_) => null);
+      } catch (_) {}
     }
+    if (group != null) {
+      final live = ServerOption.parse(group);
+      if (live.isNotEmpty) return live;
+    }
+    final cached = readCachedServerOptions(_ref.read(sharedPreferencesProvider).requireValue);
+    if (cached.isNotEmpty) return cached;
+    // Сохранённого списка нет — разобрать конфиг активного профиля.
+    try {
+      final profile = await _ref.read(activeProfileProvider.future);
+      if (profile == null) return const [];
+      final file = _ref.read(profilePathResolverProvider).file(profile.id);
+      if (!await file.exists()) return const [];
+      return parseServerOptionsFromConfig(await file.readAsString());
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Future<void> persistSelection(ServerSelection selection, StillCurrent current) {
+    // Один шаг под проверкой поколения (v4, S). Авто — только страна, как в карточке выбора.
+    final notifier = _ref.read(serverSelectionProvider.notifier);
+    final stored = _ref.read(serverSelectionProvider);
+    final next = selection.isAuto ? stored.copyWith(c: autoCountryKey) : selection;
+    return notifier.setIfCurrent(next, current);
   }
 
   @override
@@ -178,13 +205,11 @@ class _AppEngineAdapter implements AppEngineAdapter {
     if (before is Disconnected) return null;
     if (!current()) return 'команда устарела';
     await _ref.read(Preferences.startedByUser.notifier).update(false);
-    if (status == AppEngineStatus.connected || status == AppEngineStatus.connecting) {
-      await _ref.read(connectionNotifierProvider.notifier).abortConnection();
-    } else {
-      // Экран показывает ошибку или «отключается», а ядро не остановлено — остановить напрямую.
-      final stopped = await _ref.read(connectionRepositoryProvider).disconnect().run();
-      if (stopped.isLeft()) return 'ядро приложения не остановилось';
-    }
+    // Подтверждение — только если сам вызов остановки удался И ядро после него остановлено (v4, Q):
+    // поток состояния может показать «остановлено» и после неудачной остановки.
+    final stopped = await _ref.read(connectionRepositoryProvider).disconnect().run();
+    final stopError = stopped.match<String?>((failure) => 'ядро приложения не остановилось: $failure', (_) => null);
+    if (stopError != null) return stopError;
     for (var i = 0; i < 50; i++) {
       if (await _coreStatus() is Disconnected) return null;
       await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -409,12 +434,28 @@ class CliBridge with AppLogger {
     if (!cliSyncSupported || service == null) return StartReservation.none();
     final reservation = await service.reserveStart();
     if (reservation == null) return null;
-    // Замок взят — проверить заново, не работает ли уже движок CLI (v3, B).
-    if ((await _probe()).running) {
+    // Замок взят — проверить заново, не работает ли уже движок CLI (v3, B). Только свежая проверка,
+    // начатая после взятия замка, а не ответ уже идущей.
+    if ((await _probeOnce()).running) {
       await service.releaseStart(reservation);
       return null;
     }
     return reservation;
+  }
+
+  /// Намерение пользователя приложения (кнопка, трей) включить/выключить VPN (v4, M). null — синхронизация выключена.
+  Future<VpnIntent?> recordIntent({required bool on}) async {
+    await _awaitStarted();
+    final service = _service;
+    if (!cliSyncSupported || service == null) return null;
+    return service.writeIntent(on: on);
+  }
+
+  /// Запуск, начатый намерением [on], ещё нужен (никто не попросил выключить позже).
+  Future<bool> startStillWanted(VpnIntent? on) async {
+    final service = _service;
+    if (on == null || service == null) return true;
+    return service.startStillWanted(on);
   }
 
   /// Снять резерв; если ядро приложения запустилось — сначала дождаться Connected (до 5 с),

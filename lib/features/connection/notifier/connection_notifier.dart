@@ -5,6 +5,7 @@ import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/features/cli_sync/cli_bridge.dart';
+import 'package:hiddify/features/cli_sync/cli_sync_protocol.dart';
 import 'package:hiddify/features/cli_sync/cli_sync_service.dart';
 import 'package:hiddify/features/connection/data/connection_data_providers.dart';
 import 'package:hiddify/features/connection/data/connection_repository.dart';
@@ -79,6 +80,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     // CLI-синхронизация (Windows/Linux): общий OFF кнопки и трея — VPN включён через CLI
     // (с ядром приложения или без) → выключить все движки.
     if (cliSyncSupported && await _stopAllIfCliOn()) return;
+    if (cliSyncSupported) await _recordUserIntent();
     if (state case AsyncError()) {
       await haptic.lightImpact();
       await _connect();
@@ -128,10 +130,29 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     }
   }
 
+  /// Намерение запуска, которое записала кнопка/трей (v4, M); запуск сверяется с ним до самого старта ядра.
+  VpnIntent? _onIntent;
+
+  /// Записать намерение пользователя (v4, M): ON — запомнить для проверок запуска; OFF — до любых остановок.
+  Future<void> _recordUserIntent() async {
+    final bridge = ref.read(cliBridgeProvider);
+    // Только там, где нажатие что-то делает: включение из «отключено»/ошибки, выключение из «подключено».
+    final bool? turnOn = switch (state) {
+      AsyncError() => true,
+      AsyncData(value: Disconnected()) => true,
+      AsyncData(value: Connected()) => false,
+      _ => null,
+    };
+    if (turnOn == null) return;
+    final intent = await bridge.recordIntent(on: turnOn);
+    if (turnOn) _onIntent = intent;
+  }
+
   /// Если VPN включён (или включается) через CLI — выключить и ядро приложения, и движок CLI. true — сделано.
   Future<bool> _stopAllIfCliOn() async {
     final bridge = ref.read(cliBridgeProvider);
     if (!await bridge.isCliOn()) return false;
+    await bridge.recordIntent(on: false); // сначала намерение «выключить», потом остановка (v4, M)
     await ref.read(hapticServiceProvider.notifier).mediumImpact();
     await ref.read(Preferences.startedByUser.notifier).update(false);
     if (state case AsyncData(value: Connected() || Connecting())) {
@@ -169,8 +190,12 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       return;
     }
 
+    final onIntent = _onIntent;
+    _onIntent = null;
     final activeProfile = await _refreshActiveProfile();
     if (activeProfile == null) return;
+    // Пока обновлялась подписка, VPN могли выключить (кнопкой или в CLI) — тогда не запускать (v4, M).
+    if (bridge != null && !await bridge.startStillWanted(onIntent)) return _startCancelled();
 
     // start.lock — только на запуск ядра; подписка обновлена до него (v3, C). После взятия замка мост
     // заново проверяет движок CLI (v3, B).
@@ -187,10 +212,22 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
         await ref.read(Preferences.startedByUser.notifier).update(false);
         return;
       }
-      started = await _startCore(activeProfile);
+      // Проверки намерения — сразу после взятия замка и прямо перед запуском ядра (v4, M).
+      if (bridge != null && !await bridge.startStillWanted(onIntent)) return _startCancelled();
+      final profile = await ref.read(activeProfileProvider.future) ?? activeProfile;
+      if (bridge != null && !await bridge.startStillWanted(onIntent)) return _startCancelled();
+      started = await _startCore(profile);
     } finally {
       if (bridge != null) await bridge.releaseAppStart(reservation, started: started);
     }
+  }
+
+  Future<void> _startCancelled() async {
+    loggy.info("start cancelled: VPN was turned off meanwhile");
+    await ref.read(Preferences.startedByUser.notifier).update(false);
+    ref.read(inAppNotificationControllerProvider).showInfoToast(
+      ref.read(translationsProvider).requireValue.cliSync.startCancelled,
+    );
   }
 
   /// Активный профиль; у удалённого подписка перед подключением обновляется.

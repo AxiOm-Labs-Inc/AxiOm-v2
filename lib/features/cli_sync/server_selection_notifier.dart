@@ -30,17 +30,24 @@ class ServerSelectionNotifier extends StateNotifier<ServerSelection> {
 
   final SharedPreferences _prefs;
 
-  /// Меняет только переданные поля; состояние обновляется сразу и одним шагом,
-  /// настройки пишутся следом.
+  /// Меняет только переданные поля; состояние обновляется сразу и одним шагом, настройки пишутся следом.
   Future<void> update({String? c, String? p, String? t}) => set(state.copyWith(c: c, p: p, t: t));
 
-  Future<void> set(ServerSelection next) async {
+  Future<void> set(ServerSelection next) => setIfCurrent(next, () => true);
+
+  /// Один шаг (v4, S): проверка [current], новое состояние и запись всех изменённых настроек — синхронно,
+  /// без пауз между ними (SharedPreferences меняет свою копию сразу, на диск пишет потом). Поздняя или
+  /// устаревшая команда ничего не меняет, частично записанного выбора не бывает.
+  Future<void> setIfCurrent(ServerSelection next, bool Function() current) {
+    if (!current()) return Future.value();
     final previous = state;
-    if (next == previous) return;
+    if (next == previous) return Future.value();
     state = next;
-    if (next.c != previous.c) await _prefs.setString(serverSelectorCountryKey, next.c);
-    if (next.p != previous.p) await _prefs.setString(serverSelectorProtocolKey, next.p);
-    if (next.t != previous.t) await _prefs.setString(serverSelectorTransportKey, next.t);
+    return Future.wait([
+      if (next.c != previous.c) _prefs.setString(serverSelectorCountryKey, next.c),
+      if (next.p != previous.p) _prefs.setString(serverSelectorProtocolKey, next.p),
+      if (next.t != previous.t) _prefs.setString(serverSelectorTransportKey, next.t),
+    ]);
   }
 }
 

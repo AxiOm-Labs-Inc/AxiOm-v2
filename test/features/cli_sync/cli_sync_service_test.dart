@@ -108,6 +108,43 @@ void main() {
     expect(engine.applied.last, ServerSelection.auto);
   });
 
+  test('select with no menu loaded anywhere: ack false, nothing persisted', () async {
+    engine.knownOptions = const [];
+    final ack = await run('select', selection: {'c': 'France', 'p': 'vless', 't': 'ws'});
+    expect(ack.ok, isFalse);
+    expect(ack.error, 'список серверов ещё не загружен');
+    expect(engine.persisted, isEmpty);
+  });
+
+  group('user intent (vpn-intent.json)', () {
+    test('a later OFF cancels a pending ON; a later ON does not', () async {
+      final on = await service.writeIntent(on: true);
+      expect(await service.startStillWanted(on), isTrue);
+      final intent = jsonDecode(await service.files.intentFile.readAsString()) as Map<String, dynamic>;
+      expect(intent['v'], 1);
+      expect(intent['want'], 'on');
+      expect(intent['by'], 'app');
+      expect(intent['id'], on.id);
+      await service.writeIntent(on: true);
+      expect(await service.startStillWanted(on), isTrue, reason: 'another ON is no reason to abort');
+      // OFF от CLI (как пишет sbx.py).
+      await writeJsonAtomic(service.files.intentFile, {
+        'v': 1,
+        'want': 'off',
+        'id': const Uuid().v4(),
+        'ts': now(),
+        'by': 'cli',
+      });
+      expect(await service.startStillWanted(on), isFalse);
+    });
+
+    test('malformed intents are ignored', () async {
+      final on = await service.writeIntent(on: true);
+      await service.files.intentFile.writeAsString('{"v":1,"want":"off","id":"x","ts":1,"by":"cli"}');
+      expect(await service.startStillWanted(on), isTrue);
+    });
+  });
+
   test('unknown server is rejected and not persisted', () async {
     final ack = await run('select', selection: {'c': 'Spain', 'p': 'vless', 't': 'ws'});
     expect(ack.ok, isFalse);
@@ -181,6 +218,19 @@ void main() {
       final state = await appState();
       expect(state['connected'], isTrue);
       expect(state['connecting'], isFalse);
+    });
+
+    test('probes racing with the reservation never drop the held lock (one manager per file)', () async {
+      final lock = service.startLock;
+      final results = await Future.wait([lock.heldElsewhere(), service.reserveStart(), lock.heldElsewhere()]);
+      final r = results[1] as StartReservation?;
+      expect(r, isNotNull);
+      for (var i = 0; i < 5; i++) {
+        expect(await lock.heldElsewhere(), isFalse, reason: 'held by us');
+      }
+      expect(await probe(), 'held', reason: 'still held for other processes');
+      await service.releaseStart(r!);
+      expect(await probe(), 'free');
     });
 
     test('a lock held by another process blocks the app; the holder dying releases it', () async {

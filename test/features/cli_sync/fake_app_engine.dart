@@ -36,6 +36,9 @@ class FakeAppEngine implements AppEngineAdapter {
   Duration applyDelay = Duration.zero;
 
   @override
+  Future<List<ServerOption>> loadOptions() async => knownOptions;
+
+  @override
   Future<void> persistSelection(ServerSelection selection, StillCurrent current) async {
     if (!current()) return;
     persisted.add(selection);

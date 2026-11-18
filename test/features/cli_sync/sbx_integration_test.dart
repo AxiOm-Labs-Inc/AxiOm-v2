@@ -187,7 +187,7 @@ void main() {
     test('app holds start.lock → `axiom up` does not start its engine', () async {
       engine.status = AppEngineStatus.disconnected;
       await service.writeState(force: true);
-      final lock = ByteLock(service.files.startLockFile);
+      final lock = ByteLock.forFile(service.files.startLockFile);
       expect(await lock.tryLock(), isTrue);
       try {
         final result = await axiom(['up']);

@@ -34,8 +34,11 @@ abstract class AppEngineAdapter {
   /// Известный список серверов (живой из ядра или сохранённый) — для канонических троек.
   List<ServerOption> get knownOptions;
 
+  /// Меню для команды select: живое, иначе сохранённый список, иначе разбор профиля (v4, R). Пусто — не загружено.
+  Future<List<ServerOption>> loadOptions();
+
   /// Сохранить выбор обычным путём приложения (настройки + карточка выбора). Авто — только страна.
-  /// Ничего не пишет, если [current] уже false.
+  /// Один шаг под проверкой поколения (v4, S): если [current] уже false — ничего не пишет.
   Future<void> persistSelection(ServerSelection selection, StillCurrent current);
 
   /// Применить выбор в подключённом ядре приложения (авто — выбрать самый быстрый). Ошибка или null.
@@ -95,7 +98,7 @@ class CliSyncService {
   final int _pid;
   final void Function(String message) _log;
 
-  late final ByteLock startLock = ByteLock(files.startLockFile);
+  late final ByteLock startLock = ByteLock.forFile(files.startLockFile);
 
   bool _stopped = false;
   bool _writing = false;
@@ -166,9 +169,10 @@ class CliSyncService {
   ServerSelection publishedSelection() {
     final options = adapter.knownOptions;
     final canonical = canonicalSelection(adapter.storedSelection, options);
-    final complete = canonical.isAuto || (canonical.p.isNotEmpty && canonical.t.isNotEmpty);
-    final known = options.isEmpty || validateSelection(canonical, options) == null;
-    if (complete && known) _lastCanonical = canonical;
+    // Не авто — только проверенная по известному меню тройка; без меню остаётся последняя проверенная.
+    if (canonical.isAuto || (options.isNotEmpty && validateSelection(canonical, options) == null)) {
+      _lastCanonical = canonical;
+    }
     return _lastCanonical;
   }
 
@@ -207,6 +211,21 @@ class CliSyncService {
     }
     await files.deleteAppState();
     await startLock.close();
+  }
+
+  // ── намерение пользователя (v4, M) ──
+
+  /// Записать намерение пользователя приложения включить/выключить VPN (последний пишущий прав).
+  Future<VpnIntent> writeIntent({required bool on}) async {
+    final intent = VpnIntent(want: on ? 'on' : 'off', id: const Uuid().v4(), tsMs: now, by: 'app');
+    if (!await files.writeIntent(intent)) _log('cannot write ${files.intentFile.path}');
+    return intent;
+  }
+
+  /// Запуск, начатый намерением [on], всё ещё нужен: после него никто не просил выключить.
+  Future<bool> startStillWanted(VpnIntent on) async {
+    final latest = await files.readIntent();
+    return latest == null || !latest.cancels(on);
   }
 
   /// start.lock держит другой процесс (CLI запускает свой движок): VPN включается.
@@ -289,7 +308,9 @@ class CliSyncService {
   }
 
   Future<String?> _select(ServerSelection requested, StillCurrent current) async {
-    final options = adapter.knownOptions;
+    final options = await adapter.loadOptions();
+    // Меню не загружено и взять неоткуда — ничего не сохраняем (v4, R).
+    if (options.isEmpty) return 'список серверов ещё не загружен';
     final selection = canonicalSelection(requested, options);
     final invalid = validateSelection(selection, options);
     if (invalid != null) return invalid;

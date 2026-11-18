@@ -15,6 +15,7 @@ const controlFileName = 'control.json';
 const controlAckFileName = 'control-ack.json';
 const startLockFileName = 'start.lock';
 const startOwnerFileName = 'start.owner.json';
+const vpnIntentFileName = 'vpn-intent.json';
 
 /// Файл-указатель на запущенное приложение в каталоге настроек CLI.
 const appLocationFileName = 'app-location.json';
@@ -295,6 +296,23 @@ class CliSyncFiles {
 
   File get startLockFile => File('${dir.path}${Platform.pathSeparator}$startLockFileName');
   File get startOwnerFile => File('${dir.path}${Platform.pathSeparator}$startOwnerFileName');
+  File get intentFile => File('${dir.path}${Platform.pathSeparator}$vpnIntentFileName');
+
+  Future<VpnIntent?> readIntent() async {
+    try {
+      return VpnIntent.tryParse(await intentFile.readAsString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> writeIntent(VpnIntent intent) async {
+    for (var i = 0; i < 10; i++) {
+      if (await writeJsonAtomic(intentFile, intent.toJson())) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    return false;
+  }
 
   Future<bool> writeAppState(AppSyncState state) => writeJsonAtomic(appStateFile, state.toJson());
 
@@ -349,23 +367,37 @@ class CliSyncFiles {
 }
 
 
-/// Замок на байт 0 постоянного файла (DESIGN-sync v3, A): `start.lock`, `control.lock` не удаляются никогда.
+/// Замок на байт 0 постоянного файла (DESIGN-sync v3, A; v4, N): `start.lock`, `control.lock` не удаляются никогда.
 ///
 /// Берётся блокировкой ОС без ожидания: Dart `RandomAccessFile.lock(FileLock.exclusive, 0, 1)` = POSIX
 /// fcntl-замок (CLI — `fcntl.lockf`) / Windows LockFileEx (CLI — `msvcrt.locking` с позиции 0). Ядро снимает
 /// замок, когда держатель умирает, — устаревания нет.
 ///
 /// ⚠ fcntl-замки POSIX принадлежат процессу: закрытие любого дескриптора файла снимает все замки процесса на нём,
-/// а повторный lock в том же процессе проходит. Поэтому на файл — один открытый [RandomAccessFile] на весь
-/// процесс (этот объект), и больше этот файл в процессе никто не открывает.
+/// а повторный lock в том же процессе проходит. Поэтому: на файл — один объект на весь процесс ([ByteLock.forFile]),
+/// у него один открытый дескриптор, и все действия (открыть, взять, проверить, отпустить) идут строго по очереди.
+/// Проверка, пока замок держим мы, дескриптор не трогает.
 class ByteLock {
-  ByteLock(this.file);
+  ByteLock._(this.file);
+
+  /// Единственный менеджер замка для файла в этом процессе.
+  factory ByteLock.forFile(File file) => _managers.putIfAbsent(file.absolute.path, () => ByteLock._(file));
+
+  static final _managers = <String, ByteLock>{};
 
   final File file;
   RandomAccessFile? _raf;
   bool _held = false;
+  Future<void> _tail = Future.value();
 
   bool get held => _held;
+
+  /// Действия с замком — по одному, без перекрытий.
+  Future<T> _serial<T>(Future<T> Function() action) {
+    final result = _tail.then((_) => action());
+    _tail = result.then((_) {}, onError: (_) {});
+    return result;
+  }
 
   Future<RandomAccessFile> _open() async {
     final open = _raf;
@@ -374,9 +406,7 @@ class ByteLock {
     return _raf = await file.open(mode: FileMode.append);
   }
 
-  /// Взять замок без ожидания. false — его держит другой процесс (или мы сами уже держим).
-  Future<bool> tryLock() async {
-    if (_held) return false;
+  Future<bool> _lockNow() async {
     final raf = await _open();
     try {
       await raf.lock(FileLock.exclusive, 0, 1);
@@ -387,7 +417,7 @@ class ByteLock {
     }
   }
 
-  Future<void> unlock() async {
+  Future<void> _unlockNow() async {
     if (!_held) return;
     _held = false;
     try {
@@ -395,24 +425,66 @@ class ByteLock {
     } catch (_) {}
   }
 
-  /// Держит ли замок кто-то другой: взять и сразу отпустить.
-  Future<bool> heldElsewhere() async {
+  /// Взять замок без ожидания. false — его держит другой процесс (или мы сами уже держим).
+  Future<bool> tryLock() => _serial(() async => !_held && await _lockNow());
+
+  Future<void> unlock() => _serial(_unlockNow);
+
+  /// Держит ли замок другой процесс: взять и сразу отпустить. Держим мы — false, дескриптор не трогается.
+  Future<bool> heldElsewhere() => _serial(() async {
     if (_held) return false;
-    if (await tryLock()) {
-      await unlock();
+    if (await _lockNow()) {
+      await _unlockNow();
       return false;
     }
     return true;
-  }
+  });
 
-  Future<void> close() async {
-    await unlock();
+  Future<void> close() => _serial(() async {
+    await _unlockNow();
     final raf = _raf;
     _raf = null;
     try {
       await raf?.close();
     } catch (_) {}
+  });
+}
+
+/// `vpn-intent.json` — последнее намерение пользователя включить/выключить VPN (v4, M; последний пишущий прав).
+class VpnIntent {
+  const VpnIntent({required this.want, required this.id, required this.tsMs, required this.by});
+
+  /// 'on' | 'off'.
+  final String want;
+  final String id;
+  final int tsMs;
+
+  /// 'app' | 'cli'.
+  final String by;
+
+  bool get off => want == 'off';
+
+  Map<String, dynamic> toJson() => {'v': cliSyncProtocolVersion, 'want': want, 'id': id, 'ts': tsMs, 'by': by};
+
+  static VpnIntent? tryParse(String text) {
+    final Object? json;
+    try {
+      json = jsonDecode(text);
+    } catch (_) {
+      return null;
+    }
+    if (json is! Map || json['v'] != cliSyncProtocolVersion) return null;
+    final want = json['want'];
+    final id = json['id'];
+    final ts = json['ts'];
+    final by = json['by'];
+    if ((want != 'on' && want != 'off') || id is! String || !isUuid4(id) || ts is! int) return null;
+    if (by != 'app' && by != 'cli') return null;
+    return VpnIntent(want: want as String, id: id, tsMs: ts, by: by as String);
   }
+
+  /// Отменяет ли это намерение запуск, начатый намерением [on]: «выключить», и оно новее.
+  bool cancels(VpnIntent on) => off && id != on.id && tsMs >= on.tsMs;
 }
 
 /// `start.owner.json` — кто взял start.lock (только для сообщений).
