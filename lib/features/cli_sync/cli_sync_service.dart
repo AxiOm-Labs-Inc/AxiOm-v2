@@ -215,13 +215,11 @@ class CliSyncService {
 
   // ── намерение пользователя (v4, M) ──
 
-  /// Записать намерение пользователя приложения включить/выключить VPN (последний пишущий прав).
-  Future<VpnIntent> writeIntent({required bool on}) async {
-    // ts строго растёт (как у CLI): новое намерение всегда «позже» предыдущего, даже в ту же миллисекунду.
-    final previous = await files.readIntent();
-    final ts = previous == null || now > previous.tsMs ? now : previous.tsMs + 1;
-    final intent = VpnIntent(want: on ? 'on' : 'off', id: const Uuid().v4(), tsMs: ts, by: 'app');
-    if (!await files.writeIntent(intent)) _log('cannot write ${files.intentFile.path}');
+  /// Записать намерение пользователя приложения включить/выключить VPN (v5, T: seq под intent.lock).
+  /// null — не удалось (замок занят дольше 5 с или файл не записать).
+  Future<VpnIntent?> writeIntent({required bool on}) async {
+    final intent = await files.appendIntent(want: on ? 'on' : 'off', id: const Uuid().v4(), by: 'app', tsMs: now);
+    if (intent == null) _log('cannot write ${files.intentFile.path}');
     return intent;
   }
 

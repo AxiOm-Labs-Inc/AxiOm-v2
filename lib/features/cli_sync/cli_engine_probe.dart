@@ -119,3 +119,14 @@ Future<String?> _get(HttpClient client, CliApiSettings api, String path, Duratio
     return null;
   }
 }
+
+/// Слушает ли кто-то 127.0.0.1:[port] (подтверждение остановки ядра приложения по порту mixed, v5, X).
+Future<bool> isLocalPortOpen(int port, {Duration timeout = const Duration(milliseconds: 500)}) async {
+  try {
+    final socket = await Socket.connect(InternetAddress.loopbackIPv4, port, timeout: timeout);
+    socket.destroy();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}

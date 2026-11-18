@@ -77,4 +77,12 @@ void main() {
       expect(watch.elapsed, lessThan(const Duration(seconds: 3)));
     });
   });
+
+  test('isLocalPortOpen: listening vs closed port', () async {
+    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = server.port;
+    expect(await isLocalPortOpen(port), isTrue);
+    await server.close();
+    expect(await isLocalPortOpen(port), isFalse);
+  });
 }

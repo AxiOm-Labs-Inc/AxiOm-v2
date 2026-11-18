@@ -16,6 +16,7 @@ const controlAckFileName = 'control-ack.json';
 const startLockFileName = 'start.lock';
 const startOwnerFileName = 'start.owner.json';
 const vpnIntentFileName = 'vpn-intent.json';
+const intentLockFileName = 'intent.lock';
 
 /// Файл-указатель на запущенное приложение в каталоге настроек CLI.
 const appLocationFileName = 'app-location.json';
@@ -297,6 +298,7 @@ class CliSyncFiles {
   File get startLockFile => File('${dir.path}${Platform.pathSeparator}$startLockFileName');
   File get startOwnerFile => File('${dir.path}${Platform.pathSeparator}$startOwnerFileName');
   File get intentFile => File('${dir.path}${Platform.pathSeparator}$vpnIntentFileName');
+  File get intentLockFile => File('${dir.path}${Platform.pathSeparator}$intentLockFileName');
 
   Future<VpnIntent?> readIntent() async {
     try {
@@ -306,12 +308,32 @@ class CliSyncFiles {
     }
   }
 
-  Future<bool> writeIntent(VpnIntent intent) async {
-    for (var i = 0; i < 10; i++) {
-      if (await writeJsonAtomic(intentFile, intent.toJson())) return true;
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+  /// Записать новое намерение (v5, T): под замком intent.lock прочитать текущий seq и записать seq + 1.
+  /// null — замок не взять за [lockWait] или файл не записать.
+  Future<VpnIntent?> appendIntent({
+    required String want,
+    required String id,
+    required String by,
+    required int tsMs,
+    Duration lockWait = const Duration(seconds: 5),
+  }) async {
+    final lock = ByteLock.forFile(intentLockFile);
+    final deadline = DateTime.now().add(lockWait);
+    while (!await lock.tryLock()) {
+      if (DateTime.now().isAfter(deadline)) return null;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
     }
-    return false;
+    try {
+      final current = await readIntent();
+      final intent = VpnIntent(want: want, id: id, seq: (current?.seq ?? 0) + 1, tsMs: tsMs, by: by);
+      for (var i = 0; i < 10; i++) {
+        if (await writeJsonAtomic(intentFile, intent.toJson())) return intent;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      return null;
+    } finally {
+      await lock.unlock();
+    }
   }
 
   Future<bool> writeAppState(AppSyncState state) => writeJsonAtomic(appStateFile, state.toJson());
@@ -450,13 +472,16 @@ class ByteLock {
   });
 }
 
-/// `vpn-intent.json` — последнее намерение пользователя включить/выключить VPN (v4, M; последний пишущий прав).
+/// `vpn-intent.json` — последнее намерение пользователя включить/выключить VPN (v4, M; v5, T).
+/// `seq` строго растёт: пишется только под замком `intent.lock` (прочитать seq → записать seq + 1).
+/// Сравнения — только по seq; ts — для людей.
 class VpnIntent {
-  const VpnIntent({required this.want, required this.id, required this.tsMs, required this.by});
+  const VpnIntent({required this.want, required this.id, required this.seq, required this.tsMs, required this.by});
 
   /// 'on' | 'off'.
   final String want;
   final String id;
+  final int seq;
   final int tsMs;
 
   /// 'app' | 'cli'.
@@ -464,7 +489,17 @@ class VpnIntent {
 
   bool get off => want == 'off';
 
-  Map<String, dynamic> toJson() => {'v': cliSyncProtocolVersion, 'want': want, 'id': id, 'ts': tsMs, 'by': by};
+  /// `--intent <id>:<seq>` для `axiom disconnect` (v5, U).
+  String get flagValue => '$id:$seq';
+
+  Map<String, dynamic> toJson() => {
+    'v': cliSyncProtocolVersion,
+    'want': want,
+    'id': id,
+    'seq': seq,
+    'ts': tsMs,
+    'by': by,
+  };
 
   static VpnIntent? tryParse(String text) {
     final Object? json;
@@ -476,15 +511,18 @@ class VpnIntent {
     if (json is! Map || json['v'] != cliSyncProtocolVersion) return null;
     final want = json['want'];
     final id = json['id'];
+    final seq = json['seq'];
     final ts = json['ts'];
     final by = json['by'];
-    if ((want != 'on' && want != 'off') || id is! String || !isUuid4(id) || ts is! int) return null;
+    if ((want != 'on' && want != 'off') || id is! String || !isUuid4(id) || seq is! int || seq < 1 || ts is! int) {
+      return null;
+    }
     if (by != 'app' && by != 'cli') return null;
-    return VpnIntent(want: want as String, id: id, tsMs: ts, by: by as String);
+    return VpnIntent(want: want as String, id: id, seq: seq, tsMs: ts, by: by as String);
   }
 
-  /// Отменяет ли это намерение запуск, начатый намерением [on]: «выключить», и оно новее (ts строго растёт).
-  bool cancels(VpnIntent on) => off && id != on.id && tsMs > on.tsMs;
+  /// Отменяет ли это намерение запуск, начатый намерением [on]: «выключить» с бо́льшим seq.
+  bool cancels(VpnIntent on) => off && seq > on.seq;
 }
 
 /// `start.owner.json` — кто взял start.lock (только для сообщений).

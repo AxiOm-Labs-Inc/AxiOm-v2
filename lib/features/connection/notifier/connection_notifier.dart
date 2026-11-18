@@ -152,7 +152,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   Future<bool> _stopAllIfCliOn() async {
     final bridge = ref.read(cliBridgeProvider);
     if (!await bridge.isCliOn()) return false;
-    await bridge.recordIntent(on: false); // сначала намерение «выключить», потом остановка (v4, M)
+    final off = await bridge.recordIntent(on: false); // сначала намерение «выключить», потом остановка (v4, M)
     await ref.read(hapticServiceProvider.notifier).mediumImpact();
     await ref.read(Preferences.startedByUser.notifier).update(false);
     if (state case AsyncData(value: Connected() || Connecting())) {
@@ -164,7 +164,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       }
       await bridge.publishState();
     }
-    await bridge.stopCliEngine();
+    await bridge.stopCliEngine(intent: off); // CLI получает то же намерение (v5, U)
     return true;
   }
 

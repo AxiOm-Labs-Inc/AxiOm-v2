@@ -262,7 +262,7 @@ void main() {
     test('CLI OFF while the app is preparing its start → the app start is cancelled', () async {
       engine.status = AppEngineStatus.disconnected;
       await service.writeState(force: true);
-      final on = await service.writeIntent(on: true); // кнопка «включить»; приложение обновляет подписку
+      final on = (await service.writeIntent(on: true))!; // кнопка «включить»; приложение обновляет подписку
       expect(await service.startStillWanted(on), isTrue);
       // CLI пишет «выключить» первым делом; остановка своей (несуществующей) службы на CI — не предмет теста.
       await axiom(['down']);
@@ -291,6 +291,37 @@ void main() {
       expect(result.exitCode, 0);
       expect(result.stdout as String, contains('запуск отменён'));
       expect(result.stdout as String, isNot(contains('✓ VPN включён')));
+    });
+  });
+
+  group('intent seq (v5) between the app and the real CLI', () {
+    test('app ON and CLI OFF right after it: OFF wins by seq', () async {
+      engine.status = AppEngineStatus.disconnected;
+      await service.writeState(force: true);
+      final on = (await service.writeIntent(on: true))!;
+      await axiom(['down']); // намерение «выключить» CLI пишет первым делом; остановка своей службы — не предмет теста
+      final latest = (await service.files.readIntent())!;
+      expect(latest.by, 'cli');
+      expect(latest.want, 'off');
+      expect(latest.seq, on.seq + 1, reason: 'seq under intent.lock, not timestamps');
+      expect(await service.startStillWanted(on), isFalse);
+    });
+
+    test('a delayed `disconnect --intent` older than a newer CLI ON does nothing', () async {
+      engine.status = AppEngineStatus.connected;
+      await service.writeState(force: true);
+      final off = (await service.writeIntent(on: false))!; // приложение нажало «выключить»…
+      final up = await axiom(['up']); // …а пользователь CLI успел включить (VPN уже включён в приложении)
+      expect(up.exitCode, 0);
+      final cliOn = (await service.files.readIntent())!;
+      expect(cliOn.by, 'cli');
+      expect(cliOn.want, 'on');
+      expect(cliOn.seq, greaterThan(off.seq));
+      final late = await axiom(['disconnect', '--intent', off.flagValue]); // запоздавший OFF приложения
+      expect(late.exitCode, 0);
+      expect(engine.stopCalls, 0, reason: 'the newer ON wins — nothing is stopped');
+      expect(engine.status, AppEngineStatus.connected);
+      expect((await service.files.readIntent())!.id, cliOn.id, reason: 'no new intent written');
     });
   });
 }

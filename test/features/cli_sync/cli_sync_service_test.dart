@@ -116,32 +116,58 @@ void main() {
     expect(engine.persisted, isEmpty);
   });
 
-  group('user intent (vpn-intent.json)', () {
-    test('a later OFF cancels a pending ON; a later ON does not', () async {
-      final on = await service.writeIntent(on: true);
+  group('user intent (vpn-intent.json, seq under intent.lock)', () {
+    test('a later OFF (higher seq) cancels a pending ON; a later ON does not', () async {
+      final on = (await service.writeIntent(on: true))!;
       expect(await service.startStillWanted(on), isTrue);
       final intent = jsonDecode(await service.files.intentFile.readAsString()) as Map<String, dynamic>;
       expect(intent['v'], 1);
       expect(intent['want'], 'on');
       expect(intent['by'], 'app');
       expect(intent['id'], on.id);
-      await service.writeIntent(on: true);
+      expect(intent['seq'], on.seq);
+      expect(on.flagValue, '${on.id}:${on.seq}');
+      final on2 = (await service.writeIntent(on: true))!;
+      expect(on2.seq, on.seq + 1);
       expect(await service.startStillWanted(on), isTrue, reason: 'another ON is no reason to abort');
-      // OFF от CLI (как пишет sbx.py: ts строго больше предыдущего).
-      final latest = (await service.files.readIntent())!;
+      // OFF от CLI: тот же ts, что у ON, — решает только seq.
       await writeJsonAtomic(service.files.intentFile, {
         'v': 1,
         'want': 'off',
         'id': const Uuid().v4(),
-        'ts': now() > latest.tsMs ? now() : latest.tsMs + 1,
+        'seq': on2.seq + 1,
+        'ts': on.tsMs,
         'by': 'cli',
       });
       expect(await service.startStillWanted(on), isFalse);
     });
 
-    test('malformed intents are ignored', () async {
-      final on = await service.writeIntent(on: true);
-      await service.files.intentFile.writeAsString('{"v":1,"want":"off","id":"x","ts":1,"by":"cli"}');
+    test('concurrent writers get unique, strictly increasing seq', () async {
+      final intents = await Future.wait([for (var i = 0; i < 20; i++) service.writeIntent(on: i.isEven)]);
+      final seqs = intents.map((i) => i!.seq).toList()..sort();
+      expect(seqs.toSet().length, 20);
+      expect(seqs.last - seqs.first, 19);
+      expect((await service.files.readIntent())!.seq, seqs.last);
+    });
+
+    test('intent.lock held by another process: the writer waits for it', () async {
+      final holderScript = File(p.join(tmp.path, 'lock_holder.py'));
+      await holderScript.writeAsString(lockHolderPy);
+      final holder = await Process.start(testPython, [holderScript.path, service.files.intentLockFile.path, 'hold']);
+      expect(await holder.stdout.transform(utf8.decoder).transform(const LineSplitter()).first, 'locked');
+      final pending = service.writeIntent(on: false);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(await service.files.readIntent(), isNull, reason: 'not written while intent.lock is held');
+      holder.kill(ProcessSignal.sigkill);
+      await holder.exitCode;
+      expect((await pending)?.want, 'off');
+    });
+
+    test('malformed intents (no seq, bad id) are ignored', () async {
+      final on = (await service.writeIntent(on: true))!;
+      await service.files.intentFile.writeAsString('{"v":1,"want":"off","id":"${const Uuid().v4()}","ts":1,"by":"cli"}');
+      expect(await service.startStillWanted(on), isTrue);
+      await service.files.intentFile.writeAsString('{"v":1,"want":"off","id":"x","seq":99,"ts":1,"by":"cli"}');
       expect(await service.startStillWanted(on), isTrue);
     });
   });

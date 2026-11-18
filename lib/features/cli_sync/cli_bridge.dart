@@ -35,6 +35,7 @@ import 'package:hiddify/features/proxy/data/proxy_data_providers.dart';
 import 'package:hiddify/features/proxy/data/server_list_cache.dart';
 import 'package:hiddify/features/proxy/model/server_option.dart';
 import 'package:hiddify/features/proxy/overview/proxies_overview_notifier.dart';
+import 'package:hiddify/features/settings/data/config_option_repository.dart';
 import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -201,8 +202,8 @@ class _AppEngineAdapter implements AppEngineAdapter {
 
   @override
   Future<String?> stopEngine(StillCurrent current) async {
-    final before = await _coreStatus();
-    if (before is Disconnected) return null;
+    final port = _ref.read(ConfigOptions.mixedPort);
+    if (await _coreStatus() is Disconnected && !await isLocalPortOpen(port)) return null;
     if (!current()) return 'команда устарела';
     await _ref.read(Preferences.startedByUser.notifier).update(false);
     // Подтверждение — только если сам вызов остановки удался И ядро после него остановлено (v4, Q):
@@ -210,11 +211,14 @@ class _AppEngineAdapter implements AppEngineAdapter {
     final stopped = await _ref.read(connectionRepositoryProvider).disconnect().run();
     final stopError = stopped.match<String?>((failure) => 'ядро приложения не остановилось: $failure', (_) => null);
     if (stopError != null) return stopError;
+    // И статус ядра «остановлено», и порт mixed приложения закрыт (v5, X).
     for (var i = 0; i < 50; i++) {
-      if (await _coreStatus() is Disconnected) return null;
+      if (await _coreStatus() is Disconnected && !await isLocalPortOpen(port)) return null;
       await Future<void>.delayed(const Duration(milliseconds: 200));
     }
-    return 'ядро приложения не остановилось за 10 с';
+    return 'ядро приложения не остановилось за 10 с (статус или порт $port)';
+  }
+
   }
 }
 
@@ -458,13 +462,13 @@ class CliBridge with AppLogger {
     return service.startStillWanted(on);
   }
 
-  /// Снять резерв; если ядро приложения запустилось — сначала дождаться Connected (до 5 с),
-  /// чтобы app-state ни на миг не показал «выключено».
+  /// Снять резерв; если ядро приложения запустилось — держать start.lock, пока ядро не сообщит о запуске
+  /// (до 30 с, v5, V), чтобы app-state ни на миг не показал «выключено».
   Future<void> releaseAppStart(StartReservation reservation, {required bool started}) async {
     final service = _service;
     if (!reservation.real || service == null) return;
     if (started) {
-      for (var i = 0; i < 50 && service.adapter.status != AppEngineStatus.connected; i++) {
+      for (var i = 0; i < 300 && service.adapter.status != AppEngineStatus.connected; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
     }
@@ -474,14 +478,15 @@ class CliBridge with AppLogger {
   /// Выключить VPN через CLI: дождаться его запуска, если он идёт (до 60 с), затем `axiom disconnect`.
   /// Linux: если он не смог, а движок CLI всё ещё работает, — `pkexec systemctl stop axiom.service`
   /// (сам `axiom` под root не запускается), затем проверка заново.
-  Future<void> stopCliEngine() async {
+  Future<void> stopCliEngine({VpnIntent? intent}) async {
     final service = _service;
     if (service != null) {
       for (var i = 0; i < 120 && await service.startHeldElsewhere(); i++) {
         await Future<void>.delayed(const Duration(milliseconds: 500));
       }
     }
-    final result = await _runCli(['disconnect'], toastOnError: false);
+    // Своё намерение «выключить» — CLI не пишет нового и ничего не делает, если есть более новое (v5, U).
+    final result = await _runCli(['disconnect', if (intent != null) ...['--intent', intent.flagValue]], toastOnError: false);
     if (result == null || result.ok) return;
     if (Platform.isLinux && (await _probe()).running) {
       final command = CliLocations.pkexecStopCommand(exists: (path) => File(path).existsSync());
