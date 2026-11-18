@@ -26,7 +26,7 @@ void main() {
   });
 
   test('stdin is closed: a prompt gets EOF instead of hanging', () async {
-    final (exe, args) = shell('read x; echo "got:$x"', r'set /p x= & echo got:%x%');
+    final (exe, args) = shell(r'read x; echo "got:$x"', 'set /p x= & echo got:%x%');
     final result = await runCliProcess(exe, args, timeout: const Duration(seconds: 10));
     expect(result.timedOut, isFalse);
     expect(result.stdout, contains('got:'));

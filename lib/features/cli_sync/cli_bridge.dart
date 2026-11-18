@@ -26,9 +26,9 @@ import 'package:hiddify/features/cli_sync/server_selection_notifier.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/proxy/active/active_proxy_notifier.dart';
+import 'package:hiddify/features/proxy/data/proxy_data_providers.dart';
 import 'package:hiddify/features/proxy/data/server_list_cache.dart';
 import 'package:hiddify/features/proxy/model/server_option.dart';
-import 'package:hiddify/features/proxy/data/proxy_data_providers.dart';
 import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -63,7 +63,6 @@ class CliBridge with AppLogger {
 
   static const _rediscoverEvery = Duration(seconds: 10);
   static const _probeEvery = Duration(seconds: 2);
-  static const _cliTimeout = Duration(seconds: 30);
 
   bool _started = false;
   bool _disposed = false;
@@ -108,8 +107,8 @@ class CliBridge with AppLogger {
       return;
     }
     if (_disposed) return;
-    _ref.listen(connectionNotifierProvider, (_, __) => unawaited(_writeState(force: true)));
-    _ref.listen(serverSelectionProvider, (_, __) => unawaited(_writeState(force: true)));
+    _ref.listen(connectionNotifierProvider, (_, _) => unawaited(_writeState(force: true)));
+    _ref.listen(serverSelectionProvider, (_, _) => unawaited(_writeState(force: true)));
     _tickTimer = Timer.periodic(controlPollInterval, (_) => unawaited(_tick()));
     _probeTimer = Timer.periodic(_probeEvery, (_) => unawaited(_probe()));
     unawaited(_tick());
@@ -381,7 +380,7 @@ class CliBridge with AppLogger {
     _engine.publish(_ref.read(cliEngineProvider).copyWith(busy: true));
     try {
       loggy.info('cli-sync: axiom ${args.join(" ")}');
-      final result = await runCliProcess(binary, args, timeout: _cliTimeout);
+      final result = await runCliProcess(binary, args);
       if (!result.ok) {
         loggy.warning('cli-sync: axiom ${args.first} failed: $result');
         notifications.showErrorToast(t.cliSync.commandFailed(error: result.message));

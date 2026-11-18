@@ -55,7 +55,7 @@ void main() {
     });
 
     test('rawTag null is written as null', () {
-      final s = AppSyncState(
+      const s = AppSyncState(
         pid: 1,
         heartbeatMs: 2,
         connected: false,
