@@ -703,5 +703,10 @@
       "missingLicense": "Warp license",
       "missingLicenseMsg": "The selected profile uses the WARP feature; to use this feature, the WARP license must be agreed to."
     }
+  },
+  "cliSync": {
+    "connectedViaCli": "Connected via AxiOm CLI",
+    "notFound": "AxiOm CLI not found",
+    "commandFailed": "AxiOm CLI command failed: ${error}"
   }
 }

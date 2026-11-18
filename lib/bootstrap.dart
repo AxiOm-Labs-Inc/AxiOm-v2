@@ -17,6 +17,7 @@ import 'package:hiddify/core/preferences/preferences_provider.dart';
 import 'package:hiddify/features/app/widget/app.dart';
 import 'package:hiddify/features/app_update/notifier/app_update_notifier.dart';
 import 'package:hiddify/features/auto_start/notifier/auto_start_notifier.dart';
+import 'package:hiddify/features/cli_sync/cli_bridge.dart';
 import 'package:hiddify/features/log/data/log_data_providers.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
@@ -84,6 +85,8 @@ Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async
   // Start syncing the offline server list with the active profile right away.
   container.read(serverListCacheWatcherProvider);
   await _init("hiddify-core", () => container.read(hiddifyCoreServiceProvider).init());
+  // CLI-синхронизация (Windows/Linux): в фоне, запуск не задерживает.
+  if (cliSyncSupported) unawaited(container.read(cliBridgeProvider).start());
   if (!kIsWeb) {
     // await _safeInit(
     //   "deep link service",
@@ -118,6 +121,10 @@ Future<void> lazyBootstrap(WidgetsBinding widgetsBinding, Environment env) async
 
   if (!kIsWeb) {
     FlutterNativeSplash.remove();
+  }
+  // Замена старого Go-CLI на SBX — раз на версию, после первого кадра, в фоне.
+  if (cliSyncSupported) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(runLegacyCliMigrationOnce(container)));
   }
   // SentryFlutter.s(DateTime.now().toUtc());
 }

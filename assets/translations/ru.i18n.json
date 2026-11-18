@@ -704,5 +704,10 @@
       "missingLicense": "Отсутствует лицензия Warp",
       "missingLicenseMsg": "Выбранный профиль использует функцию WARP; для использования этой функции необходимо принять лицензию WARP."
     }
+  },
+  "cliSync": {
+    "connectedViaCli": "Подключено через AxiOm CLI",
+    "notFound": "AxiOm CLI не найден",
+    "commandFailed": "Команда AxiOm CLI не выполнена: ${error}"
   }
 }

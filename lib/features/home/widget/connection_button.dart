@@ -11,6 +11,7 @@ import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/core/theme/theme_extensions.dart';
 import 'package:hiddify/core/widget/animated_text.dart';
+import 'package:hiddify/features/cli_sync/cli_bridge.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
@@ -184,6 +185,30 @@ class ConnectionButton extends HookConsumerWidget {
         ),
       _ => null,
     };
+
+    // CLI-синхронизация: VPN включён движком CLI, а ядро приложения выключено — кнопка показывает
+    // «подключено», нажатие выключает VPN через `axiom disconnect`.
+    final cliEngine = ref.watch(cliEngineProvider);
+    final cliOnly =
+        cliEngine.running && (connectionStatus is AsyncError || connectionStatus.valueOrNull is Disconnected);
+    if (cliOnly) {
+      return _ConnectionButton(
+        extraWidget: Text(
+          t.cliSync.connectedViaCli,
+          style: const TextStyle(fontSize: 13, letterSpacing: 0.5, color: Color(0xFF5DCAA5)),
+        ),
+        onTap: cliEngine.busy ? () {} : () => ref.read(cliBridgeProvider).disconnectCliEngine(),
+        enabled: !cliEngine.busy,
+        label: cliEngine.busy ? t.connection.disconnecting : t.connection.connected,
+        buttonColor: buttonTheme.connectedColor!,
+        image: Assets.images.connectNorouz,
+        isConnected: true,
+        newButtonColor: buttonTheme.connectedColor!,
+        animated: true,
+        useImage: today.day >= 19 && today.day <= 23 && today.month == 3,
+        secureLabel: "",
+      );
+    }
 
     return _ConnectionButton(
       extraWidget: extraWidget,

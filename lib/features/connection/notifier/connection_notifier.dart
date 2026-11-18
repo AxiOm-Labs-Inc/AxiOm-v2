@@ -4,6 +4,7 @@ import 'package:hiddify/core/haptic/haptic_service.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
+import 'package:hiddify/features/cli_sync/cli_bridge.dart';
 import 'package:hiddify/features/connection/data/connection_data_providers.dart';
 import 'package:hiddify/features/connection/data/connection_repository.dart';
 import 'package:hiddify/features/connection/model/connection_failure.dart';
@@ -137,6 +138,13 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> _connectThrottled() async {
+    // CLI-синхронизация: VPN уже включён движком CLI — второй движок не запускаем.
+    if (await ref.read(cliBridgeProvider).isCliEngineRunningNow()) {
+      loggy.info("CLI engine is running, not starting the app engine");
+      await ref.read(Preferences.startedByUser.notifier).update(false);
+      return;
+    }
+
     final initialProfile = await ref.read(activeProfileProvider.future);
     if (initialProfile == null) {
       loggy.info("no active profile, not connecting");

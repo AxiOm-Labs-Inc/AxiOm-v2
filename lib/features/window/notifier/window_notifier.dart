@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:hiddify/core/model/constants.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
+import 'package:hiddify/features/cli_sync/cli_bridge.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/utils/utils.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -133,6 +134,10 @@ class WindowNotifier extends _$WindowNotifier with AppLogger {
         .catchError((e) {
           loggy.warning("error aborting connection on quit", e);
         });
+    // CLI-синхронизация: убрать app-state.json, чтобы CLI сразу знал, что приложения нет.
+    await ref.read(cliBridgeProvider).shutdown().timeout(const Duration(seconds: 1)).catchError((Object e) {
+      loggy.warning("error stopping cli sync on quit", e);
+    });
     await trayManager.destroy();
     await windowManager.destroy();
   }

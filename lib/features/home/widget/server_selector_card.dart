@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/model/failures.dart';
+import 'package:hiddify/features/cli_sync/cli_bridge.dart';
+import 'package:hiddify/features/cli_sync/server_selection_notifier.dart';
 import 'package:hiddify/core/preferences/preferences_provider.dart';
-import 'package:hiddify/core/utils/preferences_utils.dart';
 import 'package:hiddify/features/proxy/data/server_list_cache.dart';
 import 'package:hiddify/features/proxy/model/proxy_failure.dart';
 import 'package:hiddify/features/proxy/model/server_option.dart';
@@ -146,36 +149,28 @@ class _ServerSelectorBody extends HookConsumerWidget {
     final fastestOption = useMemoized(() => ServerOption.fastest(options), [itemsSignature]);
 
     final prefs = ref.watch(sharedPreferencesProvider).requireValue;
-    final countryPref = useMemoized(
-      () => PreferencesEntry<String, String>(
-        preferences: prefs,
-        key: 'server_selector_country',
-        defaultValue: ServerOption.autoCountryKey,
-      ),
-    );
-    final protocolPref = useMemoized(
-      () => PreferencesEntry<String, String>(
-        preferences: prefs,
-        key: 'server_selector_protocol',
-        defaultValue: '',
-      ),
-    );
-    final transportPref = useMemoized(
-      () => PreferencesEntry<String, String>(
-        preferences: prefs,
-        key: 'server_selector_transport',
-        defaultValue: '',
-      ),
-    );
+    // Выбор хранится в serverSelectionProvider (те же настройки server_selector_*): его меняет и CLI.
+    final selection = ref.read(serverSelectionProvider.notifier);
+    final initialSelection = ref.read(serverSelectionProvider);
 
     // Restore the previously selected server instead of defaulting to auto.
-    final selectedCountry = useState<String?>(countryPref.read());
-    final selectedProtocol = useState<String?>(
-      protocolPref.read().isEmpty ? null : protocolPref.read(),
-    );
-    final selectedTransport = useState<String?>(
-      transportPref.read().isEmpty ? null : transportPref.read(),
-    );
+    final selectedCountry = useState<String?>(initialSelection.c);
+    final selectedProtocol = useState<String?>(initialSelection.p.isEmpty ? null : initialSelection.p);
+    final selectedTransport = useState<String?>(initialSelection.t.isEmpty ? null : initialSelection.t);
+
+    // Выбор, пришедший извне (команда CLI, настройки, перечитанные с диска), — в состояние карточки.
+    ref.listen(serverSelectionProvider, (previous, next) {
+      if (previous?.c != next.c) selectedCountry.value = next.c;
+      if (previous?.p != next.p) selectedProtocol.value = next.p.isEmpty ? null : next.p;
+      if (previous?.t != next.t) selectedTransport.value = next.t.isEmpty ? null : next.t;
+    });
+
+    // CLI-синхронизация: пока VPN включён движком CLI, выбор применяет CLI (`axiom use --select`).
+    bool forwardToCli() {
+      if (!ref.read(cliEngineProvider).running) return false;
+      unawaited(ref.read(cliBridgeProvider).useSelectionInCli(ref.read(serverSelectionProvider)));
+      return true;
+    }
 
     // Cache the live server list so it can be shown/selected before connecting.
     useEffect(() {
@@ -195,20 +190,21 @@ class _ServerSelectorBody extends HookConsumerWidget {
       if (protocols.isEmpty) {
         // Remembered country is no longer available — fall back to auto.
         selectedCountry.value = ServerOption.autoCountryKey;
-        countryPref.write(ServerOption.autoCountryKey);
+        // Провайдер нельзя менять во время build — после кадра.
+        Future.microtask(() => selection.update(c: ServerOption.autoCountryKey));
         return null;
       }
       final p = protocols.contains(selectedProtocol.value) ? selectedProtocol.value! : protocols.first;
       if (selectedProtocol.value != p) {
         selectedProtocol.value = p;
-        protocolPref.write(p);
+        Future.microtask(() => selection.update(p: p));
       }
       final available = ServerOption.transportsFor(options, c, p);
       if (available.isEmpty) return null;
       final tr = available.contains(selectedTransport.value) ? selectedTransport.value! : available.first;
       if (selectedTransport.value != tr) {
         selectedTransport.value = tr;
-        transportPref.write(tr);
+        Future.microtask(() => selection.update(t: tr));
       }
       final option = ServerOption.find(options, c, p, tr);
       if (live && option != null && selectedRawTag != option.rawTag) {
@@ -339,7 +335,8 @@ class _ServerSelectorBody extends HookConsumerWidget {
                   if (value == null) return;
                   if (value == ServerOption.autoCountryKey) {
                     selectedCountry.value = ServerOption.autoCountryKey;
-                    await countryPref.write(ServerOption.autoCountryKey);
+                    await selection.update(c: ServerOption.autoCountryKey);
+                    if (forwardToCli()) return;
                     final best = ServerOption.fastest(options);
                     if (best == null) return;
                     selectedProtocol.value = best.protocol;
@@ -358,9 +355,8 @@ class _ServerSelectorBody extends HookConsumerWidget {
                       ? selectedTransport.value!
                       : nextTransports.first;
                   selectedTransport.value = nextTransport;
-                  await countryPref.write(value);
-                  await protocolPref.write(nextProtocol);
-                  await transportPref.write(nextTransport);
+                  await selection.update(c: value, p: nextProtocol, t: nextTransport);
+                  if (forwardToCli()) return;
                   await applySelection(value, nextProtocol, nextTransport);
                 },
         ),
@@ -446,8 +442,8 @@ class _ServerSelectorBody extends HookConsumerWidget {
                       ? selectedTransport.value!
                       : nextTransports.first;
                   selectedTransport.value = nextTransport;
-                  await protocolPref.write(value);
-                  await transportPref.write(nextTransport);
+                  await selection.update(p: value, t: nextTransport);
+                  if (forwardToCli()) return;
                   await applySelection(country, value, nextTransport);
                 },
               ),
@@ -521,7 +517,8 @@ class _ServerSelectorBody extends HookConsumerWidget {
                 onChanged: (value) async {
                   if (value == null) return;
                   selectedTransport.value = value;
-                  await transportPref.write(value);
+                  await selection.update(t: value);
+                  if (forwardToCli()) return;
                   await applySelection(country, protocol, value);
                 },
               ),
