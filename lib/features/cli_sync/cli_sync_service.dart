@@ -211,6 +211,8 @@ class CliSyncService {
     }
     await files.deleteAppState();
     await startLock.close();
+    // Дескриптор intent.lock тоже закрыть (на Windows открытый файл не даёт удалить каталог).
+    await ByteLock.forFile(files.intentLockFile).close();
   }
 
   // ── намерение пользователя (v4, M) ──
