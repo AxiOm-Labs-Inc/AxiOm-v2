@@ -248,7 +248,7 @@ void main() {
       expect(report.hasFailures, isFalse);
       expect(report.results.values, [LegacyOutcome.replaced]);
       expect(await File(legacy).readAsString(), 'SBX14 DOWNLOADED');
-      expect(Directory(p.join(tmp.path, 'dl')).listSync(), isEmpty, reason: 'temp download removed');
+      expect(Directory(p.join(tmp.path, 'dl')).listSync(), isEmpty, reason: 'temp copies removed');
     });
 
     test('sha256 mismatch: nothing replaced, retry next start', () async {
@@ -288,12 +288,13 @@ void main() {
     test('a failed replacement is reported (marker not saved, retried next start)', () async {
       final installer = await makeFile(p.join('app', 'cli', binName), 'SBX14');
       final legacy = await makeFile(p.join('axiom-cli', binName), 'LEGACY');
-      // Источник «пропадает» между проверкой и копированием — копия не удаётся.
-      var calls = 0;
+      final legacyResolved = await File(legacy).resolveSymbolicLinks();
+      // Источник проверен на копии, но на месте старого CLI новый файл «не запускается» — откат.
       Future<CliRunResult> run(String exe, List<String> args, {Duration timeout = const Duration(seconds: 30)}) async {
-        final result = await fakeRun(exe, args, timeout: timeout);
-        if (exe == installer && ++calls == 1) await File(installer).delete();
-        return result;
+        if (exe == legacyResolved && (await File(exe).readAsString()).startsWith('SBX14')) {
+          return const CliRunResult(exitCode: 1, stdout: '', stderr: 'boom');
+        }
+        return fakeRun(exe, args, timeout: timeout);
       }
 
       final report = await migrateLegacyCli(
@@ -308,6 +309,35 @@ void main() {
       );
       expect(report.hasFailures, isTrue);
       expect(await File(legacy).readAsString(), 'LEGACY');
+    });
+
+    test('the source is verified on a temp copy before anything is replaced', () async {
+      final installer = await makeFile(p.join('app', 'cli', binName), 'SBX14');
+      final legacy = await makeFile(p.join('axiom-cli', binName), 'LEGACY');
+      final legacyResolved = await File(legacy).resolveSymbolicLinks();
+      final versionRuns = <String>[];
+      Future<CliRunResult> run(String exe, List<String> args, {Duration timeout = const Duration(seconds: 30)}) async {
+        versionRuns.add(exe);
+        return fakeRun(exe, args, timeout: timeout);
+      }
+
+      await migrateLegacyCli(
+        isWindows: isWindows,
+        env: const {},
+        installerPaths: [installer],
+        installerSources: [installer],
+        tempDir: Directory(p.join(tmp.path, 'work')),
+        run: run,
+        fetch: (_) => fail('no download'),
+        candidates: [legacy],
+      );
+      // 1) старый CLI, 2) копия источника (не сам источник и не цель), 3) проверка после замены.
+      expect(versionRuns.length, 3);
+      expect(versionRuns[0], legacyResolved);
+      expect(p.isWithin(p.join(tmp.path, 'work'), versionRuns[1]), isTrue);
+      expect(p.basename(versionRuns[1]), binName);
+      expect(versionRuns[2], legacyResolved);
+      expect(Directory(p.join(tmp.path, 'work')).listSync(), isEmpty, reason: 'temp copies removed');
     });
 
     if (!isWindows) {

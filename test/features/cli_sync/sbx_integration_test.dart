@@ -182,4 +182,46 @@ void main() {
     final state = jsonDecode(await service.files.appStateFile.readAsString()) as Map<String, dynamic>;
     expect(state['connected'], isFalse);
   });
+
+  group('start.lock between the app and the real CLI', () {
+    test('app holds start.lock → `axiom up` does not start its engine', () async {
+      engine.status = AppEngineStatus.disconnected;
+      await service.writeState(force: true);
+      final lock = ByteLock(service.files.startLockFile);
+      expect(await lock.tryLock(), isTrue);
+      try {
+        final result = await axiom(['up']);
+        expect(result.exitCode, 0);
+        expect(result.stdout as String, isNot(contains('✓ VPN включён')), reason: 'no own engine start');
+        expect(result.stdout as String, contains('AxiOm'));
+      } finally {
+        await lock.close();
+      }
+    });
+
+    test("sbx's own lock blocks the app start; killing the holder releases it", () async {
+      // Замок берёт сам sbx.py (его try_lock), в отдельном процессе.
+      final holder = await Process.start(python, [
+        '-X',
+        'utf8',
+        '-c',
+        'import importlib.util, pathlib, sys\n'
+            'spec = importlib.util.spec_from_file_location("sbx_mod", sys.argv[1])\n'
+            'm = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n'
+            'print("locked" if m.try_lock(pathlib.Path(sys.argv[2])) else "busy", flush=True)\n'
+            'sys.stdin.read()\n',
+        axiomPy,
+        service.files.startLockFile.path,
+      ], environment: env);
+      final line = await holder.stdout.transform(utf8.decoder).transform(const LineSplitter()).first;
+      expect(line, 'locked');
+      expect(await service.startHeldElsewhere(), isTrue);
+      expect(await service.reserveStart(), isNull, reason: 'CLI is starting — the app does not start');
+      holder.kill(ProcessSignal.sigkill);
+      await holder.exitCode;
+      final reservation = await service.reserveStart();
+      expect(reservation, isNotNull, reason: 'the kernel released the lock of the dead holder');
+      await service.releaseStart(reservation!);
+    });
+  });
 }

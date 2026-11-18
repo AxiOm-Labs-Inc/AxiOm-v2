@@ -4,7 +4,8 @@
 // - app-state.json: при изменениях и пульсом раз в 2 с, удаляется при выходе;
 // - control.json: каждая команда один раз (в том числе после перезапуска — по control-ack.json),
 //   ответ — только по факту (отключено / выбор сохранён и применён), не дольше 12 с;
-// - start.lock: резерв запуска движка приложения.
+// - start.lock: резерв запуска движка приложения — замок ОС на байт 0 (v3, A), ядро снимает его само;
+// - у каждой команды своё поколение: после таймаута или новой команды её поздние шаги не выполняются (v3, J).
 // Сам движок приложения и настройки — за адаптером AppEngineAdapter.
 
 import 'dart:async';
@@ -16,6 +17,9 @@ import 'package:hiddify/features/proxy/model/server_option.dart';
 import 'package:uuid/uuid.dart';
 
 enum AppEngineStatus { disconnected, connecting, connected, disconnecting, failed }
+
+/// Ещё ли актуальна команда: false — она истекла по таймауту или пришла новее.
+typedef StillCurrent = bool Function();
 
 /// Движок и настройки приложения глазами синхронизации.
 abstract class AppEngineAdapter {
@@ -31,13 +35,16 @@ abstract class AppEngineAdapter {
   List<ServerOption> get knownOptions;
 
   /// Сохранить выбор обычным путём приложения (настройки + карточка выбора). Авто — только страна.
-  Future<void> persistSelection(ServerSelection selection);
+  /// Ничего не пишет, если [current] уже false.
+  Future<void> persistSelection(ServerSelection selection, StillCurrent current);
 
   /// Применить выбор в подключённом ядре приложения (авто — выбрать самый быстрый). Ошибка или null.
-  Future<String?> applyToEngine(ServerSelection selection);
+  /// Перед каждым действием с ядром проверяет [current].
+  Future<String?> applyToEngine(ServerSelection selection, StillCurrent current);
 
-  /// Остановить движок приложения и дождаться Disconnected. Ошибка или null.
-  Future<String?> stopEngine();
+  /// Остановить движок приложения по ФАКТИЧЕСКОМУ состоянию ядра (ошибка в состоянии приложения — не
+  /// доказательство остановки) и дождаться остановки. Ошибка или null.
+  Future<String?> stopEngine(StillCurrent current);
 }
 
 /// Резерв запуска движка приложения (start.lock).
@@ -88,7 +95,7 @@ class CliSyncService {
   final int _pid;
   final void Function(String message) _log;
 
-  late final StartLock startLock = StartLock(files.startLockFile);
+  late final ByteLock startLock = ByteLock(files.startLockFile);
 
   bool _stopped = false;
   bool _writing = false;
@@ -96,6 +103,9 @@ class CliSyncService {
   AppSyncState? _lastWritten;
   int _lastWriteMs = 0;
   StartReservation? _reservation;
+  int _generation = 0;
+  int _activeGeneration = 0;
+  ServerSelection _lastCanonical = ServerSelection.auto;
 
   int get now => _clock();
 
@@ -146,9 +156,20 @@ class CliSyncService {
       heartbeatMs: now,
       connected: connected,
       connecting: status == AppEngineStatus.connecting || _reservation != null,
-      selection: canonicalSelection(adapter.storedSelection, adapter.knownOptions),
+      selection: publishedSelection(),
       rawTag: rawTag == null || rawTag.isEmpty ? null : rawTag,
     );
+  }
+
+  /// Выбор для app-state: только каноническая тройка (v3, I). Не достраивается (меню ещё нет) или её нет
+  /// в известном списке — последняя каноническая (сначала авто).
+  ServerSelection publishedSelection() {
+    final options = adapter.knownOptions;
+    final canonical = canonicalSelection(adapter.storedSelection, options);
+    final complete = canonical.isAuto || (canonical.p.isNotEmpty && canonical.t.isNotEmpty);
+    final known = options.isEmpty || validateSelection(canonical, options) == null;
+    if (complete && known) _lastCanonical = canonical;
+    return _lastCanonical;
   }
 
   /// app-state.json при изменении или раз в 2 с (опрос раз в 1 с, запас полсекунды).
@@ -180,29 +201,36 @@ class CliSyncService {
   /// Чистый выход: снять свой резерв, дождаться начатой записи и удалить app-state.json.
   Future<void> shutdown() async {
     _stopped = true;
-    final r = _reservation;
-    if (r != null && r.real) await startLock.release(r.id);
+    _reservation = null;
     for (var i = 0; _writing && i < 50; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     await files.deleteAppState();
+    await startLock.close();
   }
 
-  /// Чужой (CLI) свежий start.lock: VPN включается через CLI.
-  Future<StartLockInfo?> foreignStartLock() async {
-    final info = await startLock.read();
-    if (info == null || !info.isFresh(now)) return null;
-    if (_reservation != null && info.id == _reservation!.id) return null;
-    return info;
+  /// start.lock держит другой процесс (CLI запускает свой движок): VPN включается.
+  Future<bool> startHeldElsewhere() async {
+    try {
+      return await startLock.heldElsewhere();
+    } catch (_) {
+      return false;
+    }
   }
 
-  /// Взять start.lock до любой подготовки к запуску. null — замок держит другая сторона.
+  /// Взять start.lock перед запуском ядра. null — его держит другая сторона (или мы уже запускаемся).
   Future<StartReservation?> reserveStart() async {
-    if (_reservation != null) return null; // уже запускаемся
-    final id = const Uuid().v4();
-    if (!await startLock.tryAcquire('app', id, now)) return null;
-    final reservation = StartReservation._(id);
+    if (_reservation != null) return null;
+    try {
+      if (!await startLock.tryLock()) return null;
+    } catch (e) {
+      _log('start.lock: $e');
+      return null;
+    }
+    final reservation = StartReservation._(const Uuid().v4());
     _reservation = reservation;
+    // Кто держит замок — только для сообщений CLI.
+    await writeJsonAtomic(files.startOwnerFile, startOwnerJson(owner: 'app', id: reservation.id, tsMs: now));
     await writeState(force: true);
     return reservation;
   }
@@ -212,19 +240,25 @@ class CliSyncService {
     if (!reservation.real) return;
     if (_reservation == reservation) _reservation = null;
     await writeState(force: true);
-    await startLock.release(reservation.id);
+    await startLock.unlock();
     if (!reservation._released.isCompleted) reservation._released.complete();
   }
 
   /// Выполнить команду и ответить. Не дольше [handlerTimeout].
   Future<void> execute(ControlCommand command) async {
     _executing = true;
+    final generation = ++_generation;
+    _activeGeneration = generation;
+    bool current() => _activeGeneration == generation && !_stopped;
     String? error;
     try {
       _log('control ${command.cmd.name} ${command.selection ?? ""} (${command.id})');
-      error = await _handle(command).timeout(
+      error = await _handle(command, current).timeout(
         handlerTimeout,
-        onTimeout: () => 'приложение не выполнило «${command.cmd.name}» за ${handlerTimeout.inSeconds} с',
+        onTimeout: () {
+          _activeGeneration = 0; // поздние шаги этой команды больше ничего не сделают
+          return 'приложение не выполнило «${command.cmd.name}» за ${handlerTimeout.inSeconds} с';
+        },
       );
     } catch (e) {
       error = '$e';
@@ -237,30 +271,31 @@ class CliSyncService {
     }
   }
 
-  Future<String?> _handle(ControlCommand command) => switch (command.cmd) {
-    ControlCmd.disconnect => _disconnect(),
-    ControlCmd.select => _select(command.selection!),
+  Future<String?> _handle(ControlCommand command, StillCurrent current) => switch (command.cmd) {
+    ControlCmd.disconnect => _disconnect(current),
+    ControlCmd.select => _select(command.selection!, current),
   };
 
-  Future<String?> _disconnect() async {
+  Future<String?> _disconnect(StillCurrent current) async {
     final pending = _reservation;
     if (pending != null) {
       // Приложение как раз запускается: отменить запуск и дождаться, пока он отпустит замок.
       pending.cancel();
       await pending.released;
     }
-    final status = adapter.status;
-    if (status == AppEngineStatus.disconnected || status == AppEngineStatus.failed) return null;
-    return adapter.stopEngine();
+    if (!current()) return 'команда устарела';
+    // Состояние приложения (в т.ч. ошибка) — не доказательство: адаптер смотрит фактическое состояние ядра.
+    return adapter.stopEngine(current);
   }
 
-  Future<String?> _select(ServerSelection requested) async {
+  Future<String?> _select(ServerSelection requested, StillCurrent current) async {
     final options = adapter.knownOptions;
     final selection = canonicalSelection(requested, options);
     final invalid = validateSelection(selection, options);
     if (invalid != null) return invalid;
-    await adapter.persistSelection(selection);
+    if (!current()) return 'команда устарела';
+    await adapter.persistSelection(selection, current);
     if (adapter.status != AppEngineStatus.connected) return null;
-    return adapter.applyToEngine(selection);
+    return adapter.applyToEngine(selection, current);
   }
 }

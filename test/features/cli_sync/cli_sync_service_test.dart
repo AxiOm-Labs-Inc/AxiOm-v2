@@ -127,7 +127,7 @@ void main() {
     expect(failed.error, 'core error');
   });
 
-  test('disconnect with nothing running is ok without touching the engine', () async {
+  test('disconnect with the core stopped is ok without touching the engine', () async {
     expect((await run('disconnect')).ok, isTrue);
     expect(engine.stopCalls, 0);
   });
@@ -143,39 +143,55 @@ void main() {
     expect(ack.error, contains('disconnect'));
   });
 
-  group('start.lock', () {
-    test('reservation publishes connecting and is released after state', () async {
+  group('start.lock (OS lock on byte 0, contention with another process)', () {
+    late File holderScript;
+
+    setUp(() async {
+      holderScript = File(p.join(tmp.path, 'lock_holder.py'));
+      await holderScript.writeAsString(lockHolderPy);
+    });
+
+    Future<Process> hold() async {
+      final process = await Process.start(testPython, [holderScript.path, service.files.startLockFile.path, 'hold']);
+      final line = await process.stdout.transform(utf8.decoder).transform(const LineSplitter()).first;
+      expect(line, 'locked');
+      return process;
+    }
+
+    Future<String> probe() async {
+      final result = await Process.run(testPython, [holderScript.path, service.files.startLockFile.path, 'probe']);
+      return (result.stdout as String).trim();
+    }
+
+    test('reservation holds the lock for other processes and publishes connecting', () async {
       final r = await service.reserveStart();
       expect(r, isNotNull);
-      final lock = jsonDecode(await service.files.startLockFile.readAsString()) as Map<String, dynamic>;
-      expect(lock['owner'], 'app');
-      expect(lock['id'], r!.id);
+      expect(await probe(), 'held');
+      final owner = jsonDecode(await service.files.startOwnerFile.readAsString()) as Map<String, dynamic>;
+      expect(owner['owner'], 'app');
+      expect(owner['id'], r!.id);
       expect((await appState())['connecting'], isTrue);
       expect(await service.reserveStart(), isNull, reason: 'already starting');
+      expect(await service.startHeldElsewhere(), isFalse, reason: 'own lock is not "elsewhere"');
       engine.status = AppEngineStatus.connected;
       await service.releaseStart(r);
-      expect(await service.files.startLockFile.exists(), isFalse);
+      expect(await probe(), 'free');
+      expect(await service.files.startLockFile.exists(), isTrue, reason: 'the lock file is never deleted');
       final state = await appState();
       expect(state['connected'], isTrue);
       expect(state['connecting'], isFalse);
     });
 
-    test('a fresh CLI lock blocks the app; a stale one is taken over', () async {
-      final lock = service.files.startLockFile;
-      await lock.writeAsString(jsonEncode({'owner': 'cli', 'id': const Uuid().v4(), 'ts': now()}));
-      expect(await service.foreignStartLock(), isNotNull);
+    test('a lock held by another process blocks the app; the holder dying releases it', () async {
+      final holder = await hold();
+      expect(await service.startHeldElsewhere(), isTrue);
       expect(await service.reserveStart(), isNull);
-      await lock.writeAsString(jsonEncode({'owner': 'cli', 'id': const Uuid().v4(), 'ts': now() - 61000}));
-      expect(await service.foreignStartLock(), isNull);
+      holder.kill(ProcessSignal.sigkill); // «падение» держателя
+      await holder.exitCode;
+      expect(await service.startHeldElsewhere(), isFalse);
       final r = await service.reserveStart();
       expect(r, isNotNull);
       await service.releaseStart(r!);
-    });
-
-    test('an empty (half-written) lock counts as held by the other side', () async {
-      await service.files.startLockFile.writeAsString('');
-      expect(await service.reserveStart(), isNull);
-      expect((await service.foreignStartLock())?.owner, '');
     });
 
     test('disconnect during the app start cancels it and waits for the release', () async {
@@ -192,10 +208,50 @@ void main() {
     });
   });
 
+  test('disconnect: an error shown by the app is not proof — the real core state decides', () async {
+    engine.status = AppEngineStatus.failed;
+    engine.coreRunning = true;
+    expect((await run('disconnect')).ok, isTrue);
+    expect(engine.stopCalls, 1);
+    engine.status = AppEngineStatus.failed;
+    engine.coreRunning = true;
+    engine.stopError = 'core still running';
+    final ack = await run('disconnect');
+    expect(ack.ok, isFalse);
+    expect(ack.error, 'core still running');
+  });
+
+  test('a timed-out select never takes effect later (newer command wins)', () async {
+    await service.shutdown();
+    service = make(handlerTimeout: const Duration(milliseconds: 300));
+    await service.start();
+    engine.status = AppEngineStatus.connected;
+    engine.applyDelay = const Duration(seconds: 1);
+    final late = await run('select', selection: {'c': 'Germany', 'p': 'hysteria2', 't': 'hy2'});
+    expect(late.ok, isFalse);
+    engine.applyDelay = Duration.zero;
+    expect((await run('select', selection: {'c': 'France', 'p': 'vless', 't': 'ws'})).ok, isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    expect(engine.applied, [const ServerSelection(c: 'France', p: 'vless', t: 'ws')]);
+  });
+
+  test('app-state publishes only canonical triples (last known one when unresolvable)', () async {
+    engine.storedSelection = const ServerSelection(c: 'France', p: 'vless', t: 'ws');
+    await service.writeState(force: true);
+    expect((await appState())['selection'], {'c': 'France', 'p': 'vless', 't': 'ws'});
+    engine.knownOptions = const [];
+    engine.storedSelection = const ServerSelection(c: 'Spain');
+    await service.writeState(force: true);
+    expect((await appState())['selection'], {'c': 'France', 'p': 'vless', 't': 'ws'});
+  });
+
   test('shutdown removes app-state and the own lock', () async {
     await service.reserveStart();
     await service.shutdown();
     expect(await service.files.appStateFile.exists(), isFalse);
-    expect(await service.files.startLockFile.exists(), isFalse);
+    final holder = File(p.join(tmp.path, 'lock_holder.py'));
+    await holder.writeAsString(lockHolderPy);
+    final probe = await Process.run(testPython, [holder.path, service.files.startLockFile.path, 'probe']);
+    expect((probe.stdout as String).trim(), 'free');
   });
 }

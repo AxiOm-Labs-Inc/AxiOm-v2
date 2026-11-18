@@ -14,6 +14,7 @@ const appStateFileName = 'app-state.json';
 const controlFileName = 'control.json';
 const controlAckFileName = 'control-ack.json';
 const startLockFileName = 'start.lock';
+const startOwnerFileName = 'start.owner.json';
 
 /// Файл-указатель на запущенное приложение в каталоге настроек CLI.
 const appLocationFileName = 'app-location.json';
@@ -31,9 +32,6 @@ const controlPollInterval = Duration(seconds: 1);
 
 /// Команды старше этого не выполняются.
 const controlMaxAge = Duration(seconds: 30);
-
-/// Чужой start.lock моложе этого — «VPN включается».
-const startLockFreshFor = Duration(seconds: 60);
 
 /// Ключ страны «авто» — как в настройках приложения.
 const autoCountryKey = '__auto__';
@@ -296,6 +294,7 @@ class CliSyncFiles {
   File get ackFile => File('${dir.path}${Platform.pathSeparator}$controlAckFileName');
 
   File get startLockFile => File('${dir.path}${Platform.pathSeparator}$startLockFileName');
+  File get startOwnerFile => File('${dir.path}${Platform.pathSeparator}$startOwnerFileName');
 
   Future<bool> writeAppState(AppSyncState state) => writeJsonAtomic(appStateFile, state.toJson());
 
@@ -350,79 +349,75 @@ class CliSyncFiles {
 }
 
 
-/// Содержимое start.lock: кто (app | cli) запускает движок и когда.
-class StartLockInfo {
-  const StartLockInfo({required this.owner, required this.id, required this.tsMs});
-
-  /// 'app', 'cli' или '' (файл пуст / недописан — считается чужим, возраст по mtime).
-  final String owner;
-  final String id;
-  final int tsMs;
-
-  bool isFresh(int nowMs) => nowMs - tsMs < startLockFreshFor.inMilliseconds;
-
-  Map<String, dynamic> toJson() => {'owner': owner, 'id': id, 'ts': tsMs};
-}
-
-/// Резерв запуска движка: `start.lock`, создаётся только эксклюзивно (как O_EXCL у CLI).
-class StartLock {
-  StartLock(this.file);
+/// Замок на байт 0 постоянного файла (DESIGN-sync v3, A): `start.lock`, `control.lock` не удаляются никогда.
+///
+/// Берётся блокировкой ОС без ожидания: Dart `RandomAccessFile.lock(FileLock.exclusive, 0, 1)` = POSIX
+/// fcntl-замок (CLI — `fcntl.lockf`) / Windows LockFileEx (CLI — `msvcrt.locking` с позиции 0). Ядро снимает
+/// замок, когда держатель умирает, — устаревания нет.
+///
+/// ⚠ fcntl-замки POSIX принадлежат процессу: закрытие любого дескриптора файла снимает все замки процесса на нём,
+/// а повторный lock в том же процессе проходит. Поэтому на файл — один открытый [RandomAccessFile] на весь
+/// процесс (этот объект), и больше этот файл в процессе никто не открывает.
+class ByteLock {
+  ByteLock(this.file);
 
   final File file;
+  RandomAccessFile? _raf;
+  bool _held = false;
 
-  /// Текущий замок или null, если его нет.
-  Future<StartLockInfo?> read() async {
+  bool get held => _held;
+
+  Future<RandomAccessFile> _open() async {
+    final open = _raf;
+    if (open != null) return open;
+    await file.parent.create(recursive: true);
+    return _raf = await file.open(mode: FileMode.append);
+  }
+
+  /// Взять замок без ожидания. false — его держит другой процесс (или мы сами уже держим).
+  Future<bool> tryLock() async {
+    if (_held) return false;
+    final raf = await _open();
     try {
-      final stat = await file.stat();
-      if (stat.type == FileSystemEntityType.notFound) return null;
-      final mtime = stat.modified.millisecondsSinceEpoch;
-      try {
-        final json = jsonDecode(await file.readAsString());
-        if (json is Map && json['owner'] is String && json['id'] is String && json['ts'] is int) {
-          return StartLockInfo(owner: json['owner'] as String, id: json['id'] as String, tsMs: json['ts'] as int);
-        }
-      } catch (_) {}
-      return StartLockInfo(owner: '', id: '', tsMs: mtime);
-    } catch (_) {
-      return null;
+      await raf.lock(FileLock.exclusive, 0, 1);
+      _held = true;
+      return true;
+    } on FileSystemException {
+      return false;
     }
   }
 
-  /// Взять замок для [owner] с [id]. false — его держит другой (и он свежий).
-  /// Устаревший (старше 60 с) замок удаляется и берётся заново.
-  Future<bool> tryAcquire(String owner, String id, int nowMs) async {
-    for (var attempt = 0; attempt < 2; attempt++) {
-      try {
-        await file.parent.create(recursive: true);
-        await file.create(exclusive: true);
-        await file.writeAsString(
-          jsonEncode(StartLockInfo(owner: owner, id: id, tsMs: nowMs).toJson()),
-          flush: true,
-        );
-        return true;
-      } on FileSystemException {
-        final current = await read();
-        if (current == null) continue; // успели удалить — ещё раз
-        if (current.isFresh(nowMs)) return false;
-        try {
-          await file.delete();
-        } catch (_) {
-          return false;
-        }
-      }
-    }
-    return false;
+  Future<void> unlock() async {
+    if (!_held) return;
+    _held = false;
+    try {
+      await _raf?.unlock(0, 1);
+    } catch (_) {}
   }
 
-  /// Снять свой замок (чужой не трогаем).
-  Future<void> release(String id) async {
-    final current = await read();
-    if (current == null || current.id != id) return;
+  /// Держит ли замок кто-то другой: взять и сразу отпустить.
+  Future<bool> heldElsewhere() async {
+    if (_held) return false;
+    if (await tryLock()) {
+      await unlock();
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> close() async {
+    await unlock();
+    final raf = _raf;
+    _raf = null;
     try {
-      await file.delete();
+      await raf?.close();
     } catch (_) {}
   }
 }
+
+/// `start.owner.json` — кто взял start.lock (только для сообщений).
+Map<String, dynamic> startOwnerJson({required String owner, required String id, required int tsMs}) =>
+    {'owner': owner, 'id': id, 'ts': tsMs};
 
 /// Содержимое app-location.json: где искать работающее приложение.
 class AppLocation {

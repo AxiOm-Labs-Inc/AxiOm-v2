@@ -2,8 +2,9 @@
 //
 // Раз на версию приложения: ищем `axiom`/`axiom.exe` в PATH и в типичных папках распаковки,
 // пропускаем CLI самого установщика, подтверждаем старый CLI строго: `<bin> version` завершился с кодом 0
-// и первая строка stdout — `axiom-cli X.Y.Z`. Подменяем файл на SBX ≥ 1.4.0: источник — CLI установщика
-// (проверяется его `version`), иначе релиз SBX ≥ 1.4.0 с проверкой sha256 из GitHub API. После замены
+// и первая строка stdout — `axiom-cli X.Y.Z`. Подменяем файл на SBX ≥ 1.4.0: источник — CLI установщика,
+// иначе релиз SBX ≥ 1.4.0 с проверкой sha256 из GitHub API; `version` источника запускается на его
+// временной копии ДО замены. После замены
 // новый файл обязан ответить `axiom X.Y.Z` ≥ 1.4.0, иначе возвращается копия старого
 // (`<имя>.old-<время>`). Остальные файлы старого CLI (axiom-core.*, libcronet.dll, VERSION) не трогаем.
 // Без зависимостей от Flutter: платформа, окружение, запуск процессов и загрузка передаются явно.
@@ -248,31 +249,48 @@ Future<LegacyCliReport> migrateLegacyCli({
   }
   if (legacy.isEmpty) return report;
 
-  String? source;
-  for (final path in installerSources) {
-    if (!await File(path).exists()) continue;
-    if (isCompatibleSbxRun(await run(path, const ['version'], timeout: const Duration(seconds: 10)))) {
-      source = await resolvePath(path);
-      break;
+  // Источник проверяется ДО замены (v3, K): его копия во временной папке под именем axiom(.exe) — так SBX
+  // включает режим AxiOm — должна ответить `axiom X.Y.Z` ≥ 1.4.0.
+  final work = Directory(p.join(tempDir.path, 'axiom-sbx-$pid-${(clock ?? () => DateTime.now().microsecondsSinceEpoch)()}'));
+  final binName = isWindows ? 'axiom.exe' : 'axiom';
+  var copies = 0;
+  Future<String?> verifiedCopy({String? from, List<int>? bytes}) async {
+    final dir = Directory(p.join(work.path, '${copies++}'));
+    await dir.create(recursive: true);
+    final copy = p.join(dir.path, binName);
+    if (from != null) {
+      await File(from).copy(copy);
+    } else {
+      await File(copy).writeAsBytes(bytes!, flush: true);
     }
-  }
-  File? downloaded;
-  if (source == null) {
-    try {
-      final bytes = await downloadLatestSbx(isWindows: isWindows, fetch: fetch);
-      await tempDir.create(recursive: true);
-      downloaded = File(p.join(tempDir.path, 'axiom-sbx-$pid-${sbxAssetName(isWindows: isWindows)}'));
-      await downloaded.writeAsBytes(bytes, flush: true);
-      source = downloaded.path;
-    } catch (e) {
-      for (final path in legacy) {
-        report.results[path] = LegacyOutcome.failed;
-        report.errors[path] = 'SBX не получен: $e';
-      }
-      return report;
+    if (!isWindows) {
+      final chmod = await Process.run('chmod', ['755', copy]);
+      if (chmod.exitCode != 0) return null;
     }
+    final result = await run(copy, const ['version'], timeout: const Duration(seconds: 10));
+    return isCompatibleSbxRun(result) ? copy : null;
   }
+
   try {
+    String? source;
+    for (final path in installerSources) {
+      if (!await File(path).exists()) continue;
+      source = await verifiedCopy(from: path);
+      if (source != null) break;
+    }
+    if (source == null) {
+      try {
+        final bytes = await downloadLatestSbx(isWindows: isWindows, fetch: fetch);
+        source = await verifiedCopy(bytes: bytes);
+        if (source == null) throw StateError('скачанный SBX не ответил `axiom X.Y.Z` ≥ 1.4.0');
+      } catch (e) {
+        for (final path in legacy) {
+          report.results[path] = LegacyOutcome.failed;
+          report.errors[path] = 'SBX не получен: $e';
+        }
+        return report;
+      }
+    }
     for (final path in legacy) {
       try {
         await replaceCliBinary(path, source, isWindows: isWindows, run: run, clock: clock);
@@ -282,10 +300,10 @@ Future<LegacyCliReport> migrateLegacyCli({
         report.errors[path] = '$e';
       }
     }
+    return report;
   } finally {
     try {
-      if (downloaded != null && await downloaded.exists()) await downloaded.delete();
+      if (await work.exists()) await work.delete(recursive: true);
     } catch (_) {}
   }
-  return report;
 }
