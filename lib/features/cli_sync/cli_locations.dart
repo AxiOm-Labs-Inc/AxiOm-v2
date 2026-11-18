@@ -73,6 +73,21 @@ class CliLocations {
     return dir == null ? null : _ctx(isWindows).join(dir, 'state.json');
   }
 
+  /// Служба движка CLI в режиме AxiOm (systemd, Linux).
+  static const axiomServiceUnit = 'axiom.service';
+
+  /// Linux: команда остановки движка CLI с правами root, когда обычный `axiom disconnect` не смог.
+  /// Сам `axiom` под root не запускается (у root другой HOME и каталог настроек) — останавливается
+  /// только служба. null — нет pkexec или systemctl.
+  static List<String>? pkexecStopCommand({required bool Function(String path) exists}) {
+    const pkexec = '/usr/bin/pkexec';
+    if (!exists(pkexec)) return null;
+    for (final systemctl in const ['/usr/bin/systemctl', '/bin/systemctl']) {
+      if (exists(systemctl)) return [pkexec, systemctl, 'stop', axiomServiceUnit];
+    }
+    return null;
+  }
+
   /// `<каталог настроек CLI>/app-location.json` — указатель на работающее приложение.
   static String? appLocationFile({required bool isWindows, required Map<String, String> env}) {
     final dir = configDir(isWindows: isWindows, env: env);

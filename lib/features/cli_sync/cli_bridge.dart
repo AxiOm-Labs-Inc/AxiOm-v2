@@ -413,7 +413,8 @@ class CliBridge with AppLogger {
   }
 
   /// Выключить VPN через CLI: дождаться его запуска, если он идёт (до 30 с), затем `axiom disconnect`.
-  /// Linux: при отказе в правах — ещё раз через `pkexec`.
+  /// Linux: если он не смог, а движок CLI всё ещё работает, — `pkexec systemctl stop axiom.service`
+  /// (сам `axiom` под root не запускается), затем проверка заново.
   Future<void> stopCliEngine() async {
     final service = _service;
     if (service != null) {
@@ -424,18 +425,16 @@ class CliBridge with AppLogger {
     final result = await _runCli(['disconnect'], toastOnError: false);
     if (result == null || result.ok) return;
     if (Platform.isLinux && (await _probe()).running) {
-      const pkexec = '/usr/bin/pkexec';
-      final binary = _binary;
-      if (binary != null && await File(pkexec).exists()) {
-        loggy.info('cli-sync: axiom disconnect failed (${result.message}), retrying with pkexec');
+      final command = CliLocations.pkexecStopCommand(exists: (path) => File(path).existsSync());
+      if (command != null) {
+        loggy.info('cli-sync: axiom disconnect failed (${result.message}), stopping the service via pkexec');
         final elevated = await _runCli(
-          ['disconnect'],
-          executable: pkexec,
-          prefix: [binary],
+          command.sublist(1),
+          executable: command.first,
           timeout: const Duration(minutes: 2),
           toastOnError: false,
         );
-        if (elevated != null && elevated.ok) return;
+        if (!(await _probe()).running) return;
         _toastError(elevated?.message ?? result.message);
         return;
       }

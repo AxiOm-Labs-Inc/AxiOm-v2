@@ -58,6 +58,23 @@ void main() {
       ]);
     });
 
+    test('pkexec fallback stops the AxiOm service, never runs axiom as root', () {
+      expect(CliLocations.pkexecStopCommand(exists: (_) => true), [
+        '/usr/bin/pkexec',
+        '/usr/bin/systemctl',
+        'stop',
+        'axiom.service',
+      ]);
+      expect(CliLocations.pkexecStopCommand(exists: (p) => p != '/usr/bin/systemctl'), [
+        '/usr/bin/pkexec',
+        '/bin/systemctl',
+        'stop',
+        'axiom.service',
+      ]);
+      expect(CliLocations.pkexecStopCommand(exists: (p) => p != '/usr/bin/pkexec'), isNull);
+      expect(CliLocations.pkexecStopCommand(exists: (p) => p == '/usr/bin/pkexec'), isNull);
+    });
+
     test('state ignores XDG_CONFIG_HOME like SBX', () {
       expect(CliLocations.stateFile(isWindows: false, env: env), '/home/u/.config/axiom/cli/state.json');
       expect(CliLocations.appLocationFile(isWindows: false, env: env), '/home/u/.config/axiom/cli/app-location.json');
