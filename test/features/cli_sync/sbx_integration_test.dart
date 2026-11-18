@@ -87,6 +87,16 @@ void main() {
     axiomPy = p.join(tmp.path, 'bin', 'axiom.py');
     await Directory(p.dirname(axiomPy)).create(recursive: true);
     await File(sbxPy).copy(axiomPy);
+    // Ядро sing-box CLI здесь не запускается: подставное `check`/`version` (иначе `add` проверяет конфиг
+    // настоящим sing-box, а на Windows ещё и скачивает его с GitHub).
+    final singBox = File(p.join(tmp.path, 'bin', Platform.isWindows ? 'sing-box.cmd' : 'sing-box'));
+    if (Platform.isWindows) {
+      await singBox.writeAsString('@echo off\r\nif "%1"=="version" echo sing-box version 1.13.0\r\nexit /b 0\r\n');
+    } else {
+      await singBox.writeAsString('#!/bin/sh\n[ "\$1" = version ] && echo "sing-box version 1.13.0"\nexit 0\n');
+      await Process.run('chmod', ['755', singBox.path]);
+    }
+    env['SBX_SING_BOX'] = singBox.path;
 
     engine = FakeAppEngine(
       status: AppEngineStatus.connected,
