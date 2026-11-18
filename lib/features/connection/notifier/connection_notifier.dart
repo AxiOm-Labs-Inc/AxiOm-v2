@@ -131,11 +131,17 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   /// Если VPN включён (или включается) через CLI — выключить и ядро приложения, и движок CLI. true — сделано.
   Future<bool> _stopAllIfCliOn() async {
     final bridge = ref.read(cliBridgeProvider);
-    if (!bridge.active || !await bridge.isCliOn()) return false;
+    if (!await bridge.isCliOn()) return false;
     await ref.read(hapticServiceProvider.notifier).mediumImpact();
     await ref.read(Preferences.startedByUser.notifier).update(false);
     if (state case AsyncData(value: Connected() || Connecting())) {
       await _disconnect();
+      // Сначала ядро приложения действительно остановлено и это видно в app-state — потом CLI,
+      // иначе CLI пришлёт приложению свой disconnect.
+      for (var i = 0; i < 100 && state is! AsyncError && state.valueOrNull is! Disconnected; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      await bridge.publishState();
     }
     await bridge.stopCliEngine();
     return true;

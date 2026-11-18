@@ -204,8 +204,21 @@ class CliBridge with AppLogger {
   /// Пассивная синхронизация включена (CLI есть на машине).
   bool get active => _service != null;
 
+  Future<void>? _startFuture;
+
   /// Запуск (один раз, после инициализации ядра). Ошибки не выпускает наружу.
-  Future<void> start() async {
+  Future<void> start() => _startFuture ??= _start();
+
+  /// Подключение в первые секунды после старта не должно проскочить мимо start.lock и проверки CLI.
+  Future<void> _awaitStarted() async {
+    final started = _startFuture;
+    if (started != null) await started.timeout(const Duration(seconds: 2), onTimeout: () {});
+  }
+
+  /// Записать app-state.json сейчас (например, перед командой CLI после остановки ядра приложения).
+  Future<void> publishState() async => _service?.writeState(force: true);
+
+  Future<void> _start() async {
     if (!cliSyncSupported || _started) return;
     _started = true;
     try {
@@ -365,6 +378,7 @@ class CliBridge with AppLogger {
 
   /// VPN включён или включается через CLI (свежая проверка, до 1 с).
   Future<bool> isCliOn() async {
+    await _awaitStarted();
     if (!active) return false;
     return (await _probe()).on;
   }
@@ -372,6 +386,7 @@ class CliBridge with AppLogger {
   /// Резерв запуска движка приложения: до подготовки (обновления подписки) и запуска ядра.
   /// [StartReservation.none] — синхронизация выключена; null — VPN уже включён (или включается) через CLI.
   Future<StartReservation?> reserveAppStart() async {
+    await _awaitStarted();
     final service = _service;
     if (!cliSyncSupported || service == null) return StartReservation.none();
     final reservation = await service.reserveStart();
