@@ -121,14 +121,17 @@ void main() {
     );
     await service.start();
     ticker = Timer.periodic(const Duration(milliseconds: 200), (_) => unawaited(service.tick()));
-    // Сервер у CLI (тот же, что в списке приложения): меню CLI не пустое, как у настоящего пользователя.
+  });
+
+  // Сервер у CLI (тот же, что в списке приложения) — для тестов, где меню CLI не должно быть пустым.
+  Future<void> addCliServer() async {
     final add = await axiom([
       'add',
       'vless://11111111-2222-4333-8444-555555555555@192.0.2.1:443?type=ws&security=tls&sni=example.com'
           '#France%20(u)%20%5Bws%5D',
     ]);
     expect(add.exitCode, 0, reason: 'axiom add');
-  });
+  }
 
   tearDown(() async {
     ticker?.cancel();
@@ -148,7 +151,7 @@ void main() {
     expect(status['engine'], 'app');
   });
 
-  test('select from the CLI: the app persists it (single writer) and applies it to its engine', () async {
+  test('select from the CLI with zero own CLI servers: the app persists and applies it, exit 0', () async {
     final prefsFile = File(p.join(support, 'shared_preferences.json'));
     final prefsBefore = await prefsFile.readAsString();
     final result = await axiom(['use', '--select', '__auto__']);
@@ -161,6 +164,7 @@ void main() {
   });
 
   test('a partial selection is resolved identically on both sides', () async {
+    await addCliServer();
     final result = await axiom(['use', '--select', 'France']);
     expect(result.exitCode, 0);
     const full = ServerSelection(c: 'France', p: 'vless', t: 'ws');
