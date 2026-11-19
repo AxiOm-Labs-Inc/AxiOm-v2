@@ -14,7 +14,26 @@ struct _MyApplication
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
-#define ICON_PATH "./hiddify.png"
+
+// Минимальный размер содержимого окна — minimumWindowSize в
+// lib/features/window/notifier/window_notifier.dart. Задаётся здесь, а не только
+// через window_manager: его setMinimumSize пишет подсказки в GdkWindow, и GTK
+// затирает их своими при следующей раскладке — на Wayland окно сжималось как угодно.
+#define MIN_CONTENT_WIDTH 390
+#define MIN_CONTENT_HEIGHT 780
+
+// Значок окна (для X11; на Wayland значок берётся из .desktop по app_id) —
+// из ресурсов Flutter рядом с исполняемым файлом, а не из текущей папки.
+static void set_window_icon(GtkWindow *window)
+{
+  g_autofree gchar *exe = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe == nullptr)
+    return;
+  g_autofree gchar *dir = g_path_get_dirname(exe);
+  g_autofree gchar *icon = g_build_filename(dir, "data", "flutter_assets", "assets", "images", "source",
+                                            "ic_launcher_border.png", nullptr);
+  gtk_window_set_icon_from_file(window, icon, nullptr);
+}
 
 // Implements GApplication::activate.
 static void my_application_activate(GApplication *application)
@@ -30,7 +49,7 @@ static void my_application_activate(GApplication *application)
 
   GtkWindow *window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
-  gtk_window_set_icon_from_file(window, ICON_PATH, NULL);
+  set_window_icon(window);
 
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu
@@ -71,6 +90,7 @@ static void my_application_activate(GApplication *application)
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
 
   FlView *view = fl_view_new(project);
+  gtk_widget_set_size_request(GTK_WIDGET(view), MIN_CONTENT_WIDTH, MIN_CONTENT_HEIGHT);
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
