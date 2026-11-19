@@ -15,13 +15,6 @@ struct _MyApplication
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
-// Минимальный размер содержимого окна — minimumWindowSize в
-// lib/features/window/notifier/window_notifier.dart. Задаётся здесь, а не только
-// через window_manager: его setMinimumSize пишет подсказки в GdkWindow, и GTK
-// затирает их своими при следующей раскладке — на Wayland окно сжималось как угодно.
-#define MIN_CONTENT_WIDTH 390
-#define MIN_CONTENT_HEIGHT 780
-
 // Значок окна (для X11; на Wayland значок берётся из .desktop по app_id) —
 // из ресурсов Flutter рядом с исполняемым файлом, а не из текущей папки.
 static void set_window_icon(GtkWindow *window)
@@ -90,7 +83,6 @@ static void my_application_activate(GApplication *application)
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
 
   FlView *view = fl_view_new(project);
-  gtk_widget_set_size_request(GTK_WIDGET(view), MIN_CONTENT_WIDTH, MIN_CONTENT_HEIGHT);
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
