@@ -14,10 +14,10 @@ import 'package:window_manager/window_manager.dart';
 
 part 'window_notifier.g.dart';
 
-/// Fixed mobile-like desktop window (matches mobile UI layout).
-const fixedWindowSize = Size(390, 780);
-const minimumWindowSize = fixedWindowSize;
-const defaultWindowSize = fixedWindowSize;
+/// Mobile-like desktop window: opens at this size (matches mobile UI layout)
+/// and can be enlarged, but not made smaller.
+const minimumWindowSize = Size(390, 780);
+const defaultWindowSize = minimumWindowSize;
 
 @Riverpod(keepAlive: true)
 class WindowNotifier extends _$WindowNotifier with AppLogger {
@@ -35,37 +35,37 @@ class WindowNotifier extends _$WindowNotifier with AppLogger {
   }
 
   Future<void> saveWindowState() async {
-    if (await windowManager.isMaximized()) {
-      await windowManager.unmaximize();
-    }
-    final position = await windowManager.getPosition();
+    final maximized = await windowManager.isMaximized();
+    await ref.read(Preferences.windowMaximized.notifier).update(maximized);
+    if (maximized) return;
+    await ref.read(Preferences.windowSize.notifier).update(await windowManager.getSize());
+    await ref.read(Preferences.windowPosition.notifier).update(await windowManager.getPosition());
+  }
 
-    await ref.read(Preferences.windowMaximized.notifier).update(false);
-    await ref.read(Preferences.windowSize.notifier).update(fixedWindowSize);
-    await ref.read(Preferences.windowPosition.notifier).update(position);
+  Size _initialWindowSize() {
+    final saved = ref.read(Preferences.windowSize);
+    return Size(
+      saved.width < minimumWindowSize.width ? minimumWindowSize.width : saved.width,
+      saved.height < minimumWindowSize.height ? minimumWindowSize.height : saved.height,
+    );
   }
 
   Future<void> initWindowState() async {
+    final size = _initialWindowSize();
     final position = ref.read(Preferences.windowPosition);
-    final isWindowVisible = position != null && await checkWindowVisivility(position, fixedWindowSize);
+    final isWindowVisible = position != null && await checkWindowVisivility(position, size);
     final silentStart = ref.read(Preferences.silentStart);
-    loggy.debug("window state. size: $fixedWindowSize (fixed)");
+    loggy.debug("window state. size: $size");
     loggy.debug("window state. position: ${isWindowVisible ? position : "centered"}");
     loggy.debug("window state. silent start: ${silentStart ? "Enabled" : "Disabled"}");
 
     await windowManager.waitUntilReadyToShow(
-      WindowOptions(
-        size: fixedWindowSize,
-        center: !isWindowVisible,
-        minimumSize: fixedWindowSize,
-        maximumSize: fixedWindowSize,
-      ),
+      WindowOptions(size: size, center: !isWindowVisible, minimumSize: minimumWindowSize),
     );
-    await windowManager.setMinimumSize(fixedWindowSize);
-    await windowManager.setMaximumSize(fixedWindowSize);
-    await windowManager.setSize(fixedWindowSize);
-    await windowManager.setResizable(false);
-    await windowManager.setMaximizable(false);
+    await windowManager.setMinimumSize(minimumWindowSize);
+    await windowManager.setSize(size);
+    await windowManager.setResizable(true);
+    await windowManager.setMaximizable(true);
     await windowManager.setTitle(Constants.appName);
 
     if (isWindowVisible) {
@@ -77,6 +77,7 @@ class WindowNotifier extends _$WindowNotifier with AppLogger {
     }
     if (!silentStart) {
       await ref.read(windowNotifierProvider.notifier).show(focus: false);
+      if (ref.read(Preferences.windowMaximized)) await windowManager.maximize();
       loggy.debug("showing app window on start");
     } else {
       loggy.debug("silent start, remain hidden accessible via tray");
